@@ -1,0 +1,6 @@
+#!/bin/bash 
+nvcc -O2 -c -arch=sm_13 cp_select.cu
+gcc -O2 -c cp_median_test.cpp -I/usr/local/cuda/include/
+wait
+nvcc -o testmed cp_select.o cp_median_test.o
+

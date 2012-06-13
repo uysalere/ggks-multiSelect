@@ -1,0 +1,68 @@
+/* Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
+ *   and Toluwaloju Alabi
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ */
+
+Contents:
+        Overview: provides basic information
+        Adding a distribution: walks the user through how add a
+                               distribution  
+
+
+ ************************************************************************
+ ********************** OVERVIEW ****************************************
+ ************************************************************************  
+generateProblems.cu contains the functions that are used to generate the
+problems. In addition it also defines an array of function pointers for
+each data type, and an array of strings with the names corresponding to
+each distribution. All of the generating functions have the following
+signature:
+         
+void generateNameOfDistributionType(Type *h_vec, uint numElements,
+curandGenerator_t gen)
+
+Where:
+*h_vec: is a pointer to a host vector(with memory previously allocated)
+numElements: the size of this vector
+gen: a previously created and seeded curand_t generator.
+
+Additionally there are also functions that will return the appropriate
+arrays depending on the data type being used. 
+
+
+ ************************************************************************
+ ********************** ADDING DISTRIBUTION *****************************
+ ************************************************************************  
+ADDING DISTRIBUTION TO TEST: 
+If the user wants to test a distribution not included a new distribution
+can be added in the following manner.
+
+1. Create a function and add it to generateProblems.cu. The
+naming convention used for the provided distributions is 
+generateNameOfDistributionType, eg generateUniformfloats.
+
+where
+*h_vec: is a pointer to a host vector(with memory previously allocated)
+numElements: the size of this vector
+gen: a previously created and seeded curand_t generator.
+
+
+2. change the macro defined NUMBEROF____DISTRIBUTIONS, to reflect the new
+new number of possible distributions for that type.
+
+3. Add the name of the new function to the appropriate
+namesOf____GeneratingFunctions.
+
+4. add &generateNameOfDistributionType to the appropriate
+arrayOf____Generators, make sure to add it to the spot corresponding too
+where its name was added. 

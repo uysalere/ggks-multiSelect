@@ -1,0 +1,93 @@
+/* Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
+ *   and Toluwaloju Alabi
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Contents:
+        Overview: provides basic information, 
+        Code Description: remarks about how the code works, what it does,
+                          why it is done that way, etc. 
+      
+
+ ************************************************************************
+ ********************** OVERVIEW ****************************************
+ ************************************************************************  
+
+inplaceRadixSelect.cu contains functions that are used in the in-place radix
+select algorithm. In-place radix select is not currently incorporated as a
+separate algorithm into the testing suite but it could be done so
+easily. It is based heavily on the code from Merrill's Radix select. 
+
+
+ ************************************************************************
+ ********************** CODE DESCRIPTION ********************************
+ ************************************************************************ 
+
+inplaceRadixSelectWrapper:
+        d_vec: a device vector, containing the problem vector
+        size: the size of d_vec
+        k: the value of k, ie which order statistic is desired
+
+inplaceRadixSelectWrapper will return the kth largest value of the
+vector. Although it is likely possible to make it so that there is only one
+function using templates this was not done since there was some difficulty
+in getting it to work properly, and it was simpler to just have three
+separate functions. 
+
+The first step of inplaceRadixSelectWrapper is to do an order-preserving
+transformation of the values to unsigned integers. Given a,and b of type T,
+the transformation must have the properties that
+a > b <==> f(a) > f(b)
+a < b <==> f(a) < f(b)
+a = b <==> f(a) = f(b)
+
+And it must be and invertible function. 
+
+This function is applied to each value in the vector using thrust::for_each
+Once the vector has been transformed inplaceRadixSelect is called, it is
+given a pointer to the beginning of the device vector, a pointer to the end
+of the device vector, k, and a location to store the result. After it is
+called we do post processing on the result, it is the inverse of the
+transformation described above. Note that the vector is completely
+destroyed by inplaceRadixSelect, so if the vector is needed elsewhere it
+must be saved. 
+
+inplaceRadixSelect:
+        first: a pointer to the first element of the problem vector
+        last: a pointer to the last element of the problem vector
+        k: the desired order statistic
+        result: location to store the result. 
+
+Up to through the  point where "sorter.EnactSort" is call this function is
+nearly identical to the  "stable_radix_sort" function defined in
+stable_radix_sort_merrill.inl included in Thrust. There are some
+differences in what happens when "sorter.EnactSort" is called, and these are
+addressed in inplaceRadixSelect_apiGuide.txt" The important difference is
+that after it is called the each radix of the kth largest element is stored
+in the array storage.radixes. For example if the kth largest value was
+1001|1011|1111|0000|0011|0110|0101|0001|
+Then storage.radixes would be(28 leading zeros ommited):
+
+0:1001 
+1:1011
+2:1111
+3:0000
+4:0011
+5:0110
+6:0101
+7:0001
+
+After this we piece the kth largest value together by combining the values
+in the array into one number. We then store that value in result. Once we
+return to the wrapper it will perform a post-process function that is the
+inverse of the transformation used before calling inplaceRadixSelect. 

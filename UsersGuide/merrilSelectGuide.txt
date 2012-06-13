@@ -1,0 +1,145 @@
+/* Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
+ *   and Toluwaloju Alabi
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ */     
+
+Contents:
+        Overview: provides basic information, such as what files it
+              requires, compile commands, and basic description of how it
+              what compareAlgorithms produces.
+       Code Description: remarks about how the code works, what it does,
+        why it is done that way, etc. 
+        Performance: discussion of several performance considerations. 
+
+
+
+ ************************************************************************
+ ********************** OVERVIEW ****************************************
+ ************************************************************************  
+
+ This file contains the wrapper functions for merrillSelect. It also has
+ much of the control structure that determines whether or not the algorithm
+ can terminate without doing all of the passes. 
+
+
+ ************************************************************************
+ ********************** CODE DESCRIPTION ********************************
+ ************************************************************************  
+
+ RadixSelectWrapper
+        d_vec: the vector on which to find the kth largest element
+        size: the number of elements in d_vec
+        k: the desired order statistic
+
+        The first step is to determine which version of radix select to
+        use. For smaller sizes it is actually faster to do the
+        inplaceRadixSelect. If not we first allocate the temp_keys, which
+        is used when reordering the vector. Then we call merrillSelct,
+        providing it with pointers to the beginning, and end of device
+        vector. As well, as what value of k is desired, whether or not
+        preprocessing needs to be done on the list, a location to store the
+        result, and a pointer to temp_keys. We allocate the temporary
+        memory before calling, becasue merrillSelect expects it to be
+        passed in as it uses this space.
+
+        Unfortunately it was not possible to only write one templated
+        function, the doubles version did not seem to work. Additionally it
+        is likely that the cutoff point for when to stop doing
+        inplaceRadixSelect and start doing merrillSelect is different
+        depending upon the type. 
+
+merrillSelect:
+        first: a pointer to the beginning of the problem vector
+        last: a pointer to the end of the problem vector
+        k: the desired k statistic
+        pass: which pass of the algorithm we are on, for 32 bit values
+              there are up 8 passes, and for 64 bit values there are up to
+              16 passes. 
+        result: the location to store the kth largest value once it is
+                identified  
+        needToPreprocess: this indicates whether or not prepossessing has
+                          already been done, the need for this will be
+                          explained in detail later. 
+        temp_keys: temporary storage. 
+
+
+        The first step is to ensure that vector is aligned properly. Here
+        we deviate slightly from how it is done in thrust sort. Instead of
+        allocating new memory we instead copy the values into temp_keys,
+        and treat the original vector as temp_keys. 
+
+        After this there is a fair amount of setup that is similar to that
+        done for thrust sort. 
+
+        Once the setup is done we do a single pass. And record the returned
+        value. Then we enter the logic that determines if we need to do
+        another pass, and what values to provide to the next pass.
+
+        First we check if the pass was the last pass, and that we still
+        have more than one element left in our list. If either is the case
+        then we know that we have successfully identified the kth largest
+        element and there no need to do more. 
+
+        If there still is more work to do, there are two
+        possibilities.
+         First the return value is a non 0 number,
+        which indicates that there was no problem size reduction. This
+        occurs when all element in the list share the same digit. When this
+        is the case we saved time by not copying the vector into
+        temp_storage as normally is done. However this means that the
+        values are still in the original location, and that we still need
+        to do the preprocessing step. Because of this we  call
+        merrillSelect again, providing the same inputs as this pass except
+        we increment the pass by one. 
+
+        The second possibility is that that the returned value was 0, in
+        this case the semi-sorted vector is in temporary storage. When this
+        is the case we need to provide the next pass with pointers to
+        temp_keys. Additionally, we only want to focus on a subset of that
+        vector; specifically the portion that we have identified as
+        containing the kth largest element. That is those elements that
+        have the same most significant digits as the kth largest
+        element. To do this we use information in "h_useful" which is
+        simply a vector that contains useful information for determining
+        the next step. Additionally we know that the preprocessing stage
+        has been done so we can pass in 0 for the needToPreprocess. Also we
+        use the original location of vector as the next passes temp_keys. 
+
+        If the is no more work to do we simply copy the kth largest value
+        back to the host, post-Process it if necessary and return. 
+
+
+
+ ************************************************************************
+ ********************** Performance  ************************************
+ ************************************************************************  
+
+The performance of radix select highly dependent upon how large of
+reduction there is in problem size. Particularly in the first steps. If the
+numbers have their bits uniformly distributed then it does fairly well with
+each pass reducing the problem size by a factor of 16. Thus a majority of
+the time for running the algorithm is spent in the first two passes. 
+
+One thing that may appear odd is that for smaller problem sizes
+merrillSelect is slower than sorting and choosing, even on favorable
+problems. This is the reason that we use the inplaceRadixSelect for the
+small values. We believe that relative slowness of merrillSelect is due to
+the increased complexity in program flow. The program flow for sorting is
+quite simple, since it is a radix select,it simply goes through the same steps
+regardless of the problem vector. In selection on the other hand we have to
+continuously pass information back and forth between the CPU and gpu to
+communicate what to do next. The gpu needs to provide the CPU with
+information about how much it has reduced the problem size, and where to
+start in the vector for the next pass. In return the CPU needs to tell the
+gpu whether or not another pass needs to be run, and if preprocessing needs
+to be done. 

@@ -1,0 +1,5 @@
+CC=nvcc
+CFLAGS=-I./lib/ -I. -arch=sm_20 -lcurand -lm -lgsl -lgslcblas
+
+bucketSelect: bucketSelect.cu
+     $(CC) -o bucketSelect bucketSelect.cu $(CFLAGS)

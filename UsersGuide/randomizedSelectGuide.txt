@@ -1,0 +1,210 @@
+/* Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
+ *   and Toluwaloju Alabi
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ */
+
+
+Contents:
+        Overview: provides basic information.
+        Code Description: remarks about how the code works, what it does,
+                          why it is done that way, etc. 
+      
+
+ ************************************************************************
+ ********************** OVERVIEW ****************************************
+ ************************************************************************  
+
+randomizedSelect.cu contains the GGKS implementation of randomized selection as
+described by Monroe et al. That said there are some important
+implementation details. I will try to mention the important ones here. THe
+most important of which is that this does not do top-k selection, it merely
+finds the kth largest element. 
+
+randomizedSelectSelectWrapper:
+        This simply calls randomizedSelect filling in the desired probability to
+        be .90. This was chosen mostly empirically. If one develops a
+        faster way to count how many elements go into each of the buckets
+        this should be reduced, and if one finds a faster way to do
+        partition the elements it should be increased. 
+
+randomizedSelect:
+        Note that k is changed from kth largest to kth smallest. The first
+        20 or so lines of the function is just declaring variables and
+        allocating memory. Some of these are quite important, in particular
+        determining the number of blocks, dimension of blocks, the number
+        of splinters, etc. However they are relatively straight forward. 
+
+        One thing that should be noted is that we declare splitters, and
+        shiftedSplitters, they refer to the same array, however
+        shiftedSplitters points to the second element of splitters. This
+        was done for conceptual clarity when programing. 
+
+        The first step is to select the splitters that will be used, for
+        details about see "randomizedSelectGenerateSplittersGuide.txt". What is
+        important is that after it is called splitters is an array of
+        numSplitters + 2 elements where: 
+
+        splitters[0] = smallest possible value for data type
+        splitters[1] = a random element of the problem vector
+        .
+        .
+        .
+        splitters[numSplitters] = a random element of the problem vector
+        splitters[numSplitters+1] = largest possible value for data type
+
+        Once the splitters are selected they are sorted. After this is done
+        we call choosePivots. For details on this see notes below. The
+        important part is that we identify a left and right "bucket" such
+        that if we place the elements of the vector into the buckets there
+        is a probability p (passed in to function) that the kth element is
+        in one of the buckets between leftBucket and rightBucket,
+        inclusive. We say that an element is in bucket i if it is larger
+        than shifterSplitter[i - 1] and less than or equal to
+        shiftedSplitter[i].
+
+        We now enter into a while loop that is exited once we have chosen
+        left and right buckets so that the kth element is in a bucket
+        between left and right(inclusive). The first step is to copy the
+        pivots(two points used to determine if and element is in the middle
+        bucket") to the CPU(strictly speaking this is not necessary and we
+        could just keep track of pointers, however it was easier this way
+        and copying only two items from the GPU to the CPU does not take
+        very long). From now one we refer to elements as being in the
+        "middle bucket" if they are between the two pivots, in the "first
+        bucket" if they are left then the first pivot and in the "right
+        bucket" if they are larger then the second pivot. We now call
+        queryCount. Query count sets the values of in threadOffsetFirst and
+        theadOffsetMiddle, so that each of them contains the number of
+        times that each thread sees element in the first or middle bucket
+        respectively. Once this is done we call
+        determineIfKthInMiddleBucket which does exactly what it sounds
+        like. Then if the kth element is not in the middle bucket we shift
+        the buckets. If it is we exit the loop. 
+
+        Once we are out of the loop we call partition on the entire list,
+        this just creates a new list, called middle, that contains all of
+        the elements that are in the middle bucket. Once this is done we
+        sort middle, and then copy the appropriate element back to the
+        host, where we return it. 
+
+choosePivots:
+        Choose pivots takes n,k numSplitters, and desired probability and
+        will then determine the left and right buckets that can be used to
+        define a middle bucket in such a way that there is a
+        desiredProbabilty chance of the kth largest element being in the
+        middle bucket. This is one of the places where our implementation
+        differs in a somewhat substantial way from the algorithm described
+        by Monroe et al. 
+        
+        The first step is to calculate the most likely bucket, we do this
+        as described by Monroe et al. However in the algorithm described by
+        them they do not calculate the left and right buckets, but rather
+        they calculate bucketRange. This however would necessitate some edge
+        case handling. 
+
+        Once we calculate the most likely bucket, and the probability that
+        the kth element is in that bucket, we then add buckets onto either
+        side. When we add a bucket we calculate its probability and then
+        add that to cumulativeProbabilty so far. We do this until we have a
+        total probability that is at least the desiredProbability. If we
+        had followed the algorithm described by Monroe et al, we would
+        have to do edge handling. For example if we were interested in the
+        case where the most likely bucket is bucket 2, then if we try to
+        add three buckets to either side we would end up with a problem
+        since there is no bucket "-1".
+
+ queryCount:
+        This is quite simple, all it does is count the number of times that
+        each thread sees and element in either the first or the middle
+        bucket. Each thread is responsible fo a certain number of elements,
+        and it simply looks at each one and if the element is in the first
+        bucket it increments firstCount, and if it is in the middleBucket
+        it increments middle count. 
+
+        There are several efficiency notes to be made. First of all 
+        it is important not to update the counts in global memory each time
+        one is encountered, instead have each declared variable that you
+        update every time and then update the global memory counts at the
+        end. Also one might be tempted to copy the values into local memory
+        since it is used twice. This however is a waste, because in many
+        cases(approximately half when averaged over all values of k) it is
+        in the first bucket, so the second check never gets executed.  
+
+partition:
+        Partition, is a relatively simple procedue. Each thread looks at
+        the same elements that it did when doing query count. However
+        before it looks at its elements it first gets the offset
+        count. That is how many elements are placed in the middle bucket
+        before the first of its elements in the middle bucket. Then it
+        simply goes through and its elements, when it encounters one that
+        is in the middle bucket it puts it thier. It then increments an
+        internal counter indicating the additional amount that the next
+        item it places into middle must be offset in addition to the base
+        offset. 
+
+offsetCalc: 
+           offestClal takes threadOffsetFirst and threadOffsetMiddle, and
+           stores the total number of elements in the first and middle
+           bucket in SizeFirstBucket and SizeMiddleBUcket, This is one
+           place where our algorithm differs slightly from the algorithm
+           described by Monroe et al. Instead of doing a prefix scan for
+           both threadOffsetFirst and threadOffsetMiddle, we only do a
+           prefix scan on threadOffsetMiddle, and simply do a reduction on
+           threadOffsetFirst. We do this becasue we do not need to know the
+           individual thread offsets for the first bucket since we never
+           rewrite it, we simply need the total number of elements that
+           fall into the first bucket to help determine if the kth element
+           is in the middle bucket. 
+           
+           Additionally, it should be noted that we do an exclusive
+           scan. When doing the scan there may appear to be a conundrum. If
+           one does an inclusive scan you will be able to determine the
+           number of elements in the middle bucket by simply looking at the
+           final element of the list. However the offsets are not actually
+           correct, the offset for threadX, occurs at threadOffset[threadX
+           - 1]. This is not an insurmountable problem, however it would
+           require special handling of the fact that there is no
+           thradOffset[-1]. The other option is to do an excluclusive
+           scan. However this has the problem that although the
+           threadOffsets are all accurate, you do not get the total number
+           of elements because the last number in the list is not
+           counted. One solution to this problem is to use an exclusive
+           scan, but do it on a list one longer than actually needed, this
+           way you get accurate offsets, and the total value is
+           stored. This is the reason that we allocated sizeOfThreadOffset
+           + 1 space for the threadOffset vectors. 
+
+
+determineIfKthInMiddle:
+        This does exactly as one would expect, it determines if the kth
+        element would be in the middle bucket given the counts for the size
+        of first bucket and the size of middle bucket that it receives. If
+        the first bucket size is at least k than clearly kth is not
+        in the middle bucket, so we return -1 which indicates that the kth
+        element is in the first bucket. Else, if the the size of teh first
+        bucket plus the size of the middle bucket is at least K than kth
+        is in the middle bucket so we return 0. Other wise kth is not in
+        the first or middle bucket so it must be in the last bucket, so we
+        return 1. 
+
+shiftBuckets:
+        Shift buckets only gets executed when a previous bucketing scheme
+        has failed. That is that the kth element was not in the middle
+        bucket. It behaves differantly depending upon which bucket kth was
+        in. Remember that "left bucket" and "right bucket" refer to buckets
+        described used to determine the pivots and are not the same as
+        "first bucket" and "middle bucket". If kth was in the first bucket,
+        then what was the left bucket becomes the right bucket, and the
+        left bucket is shifted to the left by numBuckets. 
+
+

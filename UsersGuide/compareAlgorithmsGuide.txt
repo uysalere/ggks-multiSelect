@@ -1,0 +1,245 @@
+/* Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
+ *   and Toluwaloju Alabi
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ */
+
+Contents:
+        Overview: provides basic information, such as what files it
+              requires, compile commands, and basic description of how it
+              what compareAlgorithms produces.
+        Basic Usage: walks the user how to use compareAlgorithms 
+        Advanced Usage: describes how to add an algorithm to the ones
+              timed, change the algorithms that are run, and running multiple
+              types of tests in a row(ie one for floats and one for doubles).
+       Code Description: remarks about how the code works, what it does,
+        why it is done that way, etc. 
+      
+ ************************************************************************
+ ********************** OVERVIEW ****************************************
+ ************************************************************************  
+compareAlgorithms is the testing environment used for testing/benchmarking
+the GGKS algorithms.
+USING compareAlgorithms.cu
+
+This file depends on functions from the following files
+timingFunctions.cu
+generateProblems.cu
+
+As provided compareAlgorithms is used as follows:
+
+Compile it using the following command:
+nvcc -o compareAlgorithms compareAlgorithms.cu  -I./lib/ -I. -arch=sm_20
+-lcurand -lm -lgsl -lgslcblas 
+
+Call it by entering the following into the command line:
+./compareAlgorithms
+
+It will generate a csv file where each line has the following format:
+size of the problem, k, name of distribution, seed, name of first
+algorithm, result of first algorithm, time of first algorithm, name of
+second algorithm, result of second algorithm,..., time of last algorithm,
+number of algorithms that had a result different from the first algorithm
+
+ ************************************************************************
+ ********************** BASIC USAGE *************************************
+ ************************************************************************  
+0:
+The program begins by asking for a filename, this is the name of the file
+where the results will be stored. If the file already exists it will append
+the new data to the end, otherwise it will create the file. 
+
+1:
+It will then prompt the user to enter which type of values they want to
+test. 1--float, 2--double, 3--unsigned integers. Unless it has been
+modified unsigned integers will not work, this is because Beliakov's
+cutting plane algorithm does not work with uints, to test uints remove that
+algorithm, instructions included further down. 
+
+2:
+It then prompts for what distribution the user wants have tests run
+on. Currently 0 corresponds to uniform distributions on uints, floats and
+doubles, while 1 corresponds to normal distribution on floats and
+doubles. There are also additional distributions, for more details see
+generateProblemes.cu and generateProblemsGuide.txt
+
+3:
+The program will then prompt for the number of tests to run per K. The
+number provided will determine how many test are run for each n,k
+combination. 
+
+4:
+The program will then prompt for the start power. The number provided will
+determine the lowest power of two that is used for the size of the
+problem. For example if 10 is entered the program will test starting on
+vectors of size 1024
+
+5:
+The program will finally prompt for stop power. The number provided will
+determine the highest power of two that is used for the size of the
+problem. For example if 14 is entered the program will test all powers of
+two between start power and 16384. 
+
+ ************************************************************************
+ ********************** ADVANCED USAGE **********************************
+ ************************************************************************  
+If the user wants to run more than one test without prompting for input
+they can do so by inserting calls to runTests at the top of main, and
+commenting out the user interface portion of main. Run tests has the
+following function declaration
+
+void runTests(uint generateType, char* fileName,uint startPower, uint stopPower, uint timesToTestEachK){
+
+generateType: the value described in step 2 above
+fileName: the value described in step  0 above
+startPower: the value described in step 4 above
+stopPower: the value described in step 5 above
+timesToTestEachK: the value described in step 3 above
+
+for example:
+runTests<double>(1, "doubleNORMAL.csv", 12, 18, 25)
+Will do tests on doubles, where the vectors will be a normal distribution,
+and the problem sizes will go from 2^12 through 2^18. Each value of K will
+will be tested 25 times and the results will be stored in a file called
+doubleNORMAL.csv
+
+MODIFYING USAGE: 
+NOTE: WHEN ADDING DISTRIBUTIONS/TIMING FUNCTION IT IS IMPORTANT THAT THE
+NAME AND FUNCTION POINTER BE AT THE SAME INDEXES IN THE CORRESPONDING
+VECTORS
+
+CHANGING WHICH ALGORITHMS ARE TESTED:
+ Change the array algorithmsToRun in the runTests function, a 1 in the
+ index corresponding to a function in the arrayOfTiming functions(in
+ compareAlgorithms) means that that algorithm will be run, a 0 means that
+ algorithm will not be run 
+
+ADDING FUNCTION TO TIME
+If the user wants to add a function to be tested it can be done in the
+following manner.
+
+1. First the user must create a function and add it to timingFunction.cu,(the internal naming convention is
+timeNameOfFunction), with the following signature
+
+template<typename T>
+results_t* timeNameOfFunction(T *h_vec, uint size, uint k);
+
+Where 
+h_vec: is host vector
+size: the size of h_vec
+k: what k you want to find. 
+
+Examples of these can be found in timingFunctions.cu. More information can
+be found in timingFunctionsGuide.txt
+
+2. Change the macro defined value NUMBEROFALGORITHMS to reflect the total
+number of algorithms that could be tested.
+
+3. Add the name of the new function to the namesOfTimingFunctions, defined
+near the top of compareAlgorithms.
+
+4. Add &[timeNameOfFunction]<T>, to arrayOfTimingFunctions, defined in the
+compareAlgorithms function. 
+
+5. Modify the vector algorithmsToRun, in the function runTests, to reflect
+the fact that a new algorithm was added.
+
+
+ADDING DISTRIBUTION TO TEST: 
+See generateProblemsGuide.txt, it contains everything that you need to know
+about distributions. 
+
+
+
+ ************************************************************************
+ ********************** CODE DESCRIPTION ********************************
+ ************************************************************************  
+ 
+ Run tests: runTests: takes information about they distribution to be
+ tested, as well as where the information will be stored, the range of
+ vector sizes, and how many times to test each value of k. there is an
+ array, algorithmsToRun, this determines which algorithms will be run, with
+ a 1 indicating it will be run. 
+
+ The first FOR loop simply runs through each of the problem sizes that is
+ supposed to be tested. With the size doubling each time. Before any tests
+ can be run we need not only the size of the problem but which value of k
+ we want to find. For our purposes we test 25 values of k. We test k =2,
+ 1%, 2.5%, 5%, 10%, 15%,..., 90%,95%, 97.5%, 99% and size -1. This allows
+ us to see dependence on K when analyzing the results. We choose k = 2, and
+ k = size -1 because , k =1 ,and k = size are trivial problems that have a
+ better solution, namely using thrust::max, or thrust::min. 
+
+ The second FOR loop simply runs through each value of K. The first step is
+ to do a cudaDeviceReset(). After that we call compareAlgorithms.
+
+
+compareAlgorithms: compareAlgorithms is the heart of the testing suite. It
+is where the tests are actually run. 
+   Parameters:
+        size: the size of the problem that is being tested.
+        K : what kth order statistic is desired
+        numTests: the number of times to test the combination  size and k
+        algorithmsToTest: an array that contains ones and zeroes,
+                   indicating if the corresponding algorithm should be run
+        generateType: a number indicating which type of distribution should
+                      used.
+        fileNameCsv: the name of the file that the output will be written
+                     to
+
+Description: the first step is to declare the arrays that are used to store
+the results of running the tests. Additionally we do two typedefs, the
+first is defining the function pointer for the timing functions, the second
+defines the function pointer for the function that generates the test
+arrays. After some additional set up we reach the first FOR loop.
+
+The first FOR loop simply runs numTests tests. The first step is to get the
+seed. It is important to not simply use the seconds value for seed as some
+of the tests can take under one second. Then we create and shuffle the
+runOrder array. This has the effect of running the algorithms in a random
+order. This is to ensure that no algorithm gains an advantage due to run
+order. This was done since it was observered that there was slight
+variation based on run order. The next step is to generate the vector that
+will be tested. This is done by calling the generator specified by
+generateType. We store the vector on the host, and also create a copy. The
+reason for doing the copying is that this ensures that each algorithm gets
+an identical problem, since we pass the copy to the timing functions, and
+then recopy the original vector into copy again after running the each
+timing function. This means that one could include a cpu based algorithm
+that operates on the vector that is passed in if that is desired. 
+
+Now we get to the second FOR loop. This simply cycles through each of the
+algorithms. It checks to see if an algorithm is supposed to be tested, as
+specified in algorithmsToTest, if it is it runs the appropriate timing
+function storing the result in temp. Then we record the time that the
+algorithm took and what it got for the answer. Next we check to see if this
+has been the fastest algorithm to run so far, if it was we record mark it
+as the winner. Finally we clean up, by freeing temp and recopying h_vec
+into h_vec_copy. 
+
+Once we have run each of the algorithms we then write the results to the
+output file. We do this in a fixed order, that is that although the
+algorithms are run in a random order it does not appear that way in the
+output file. This was done mostly to make it easier to read the output
+files, both for humans and for sumerizing the data. Finally we calculate
+the error flag. The error flag is a count of how many of the algorithms run
+did not get the same result as algorithm 0(currently sort and choose).
+
+We then calculate the total time that each algorithm took over all the
+problems. This is not actually recorded, but it is used to display the
+average time taken by each algorithm which is displayed in the terminal. We
+do the same for the number of times each algorithm won. Finally we print
+out the information about the tests that were run, ie average time for each
+algorithm and how many times it won. Additionally if any of the algorithms
+had results that did not match sort and choose we print out which test
+number had the problem the result sort and choose got, and the result the
+algorithm got. 

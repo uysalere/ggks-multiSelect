@@ -1,0 +1,62 @@
+
+/* Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
+ *   and Toluwaloju Alabi
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ */     
+
+Contents:
+        Overview: provides basic information, such as what files it
+              requires, compile commands, and basic description of how it
+              what compareAlgorithms produces.
+       Code Description: remarks about how the code works, what it does,
+        why it is done that way, etc. 
+       
+
+ ************************************************************************
+ ********************** OVERVIEW ****************************************
+ ************************************************************************  
+
+timingFunctions.cu contains the functions that are used in
+compareAlgorithms to both time the various k selection algorithms.
+
+ ************************************************************************
+ ********************** CODE DESCRIPTION ********************************
+ ************************************************************************  
+
+template<typename T>
+results_t<T>* timeRadixSelect(T *h_vec, uint numElements, uint k)
+               h_vec: a vector on the host. 
+                numElements: the size of h_vec
+                 k: the desired kth statistic
+
+It returns a pointer to a results_t<T> structure. The structure contains
+two values: 
+    time: a float that is how long an algorithm took to to solve the kth
+    problem
+    val: the kth largest value of the vector. 
+
+The first step(after declaring the variables) is typically to call
+"setupForTiming" function. It creates the timers, allocates the device
+memory, copies teh vector to the device, and allocates memory for the
+results_t structure. 
+
+After the setup function is done you record the start event, then call the
+selection function, then record the stop event and calculate the elapsed
+time. 
+
+Finally call the "wrapupForTiming" function that will delete the
+cudaEvent_ts, the device vector, and set store teh time and result in the
+results_t structure. 
+
+The cleanup and setup functions are simply a way declutter the code, since
+essentially all of the algorithms require them to be done. 

@@ -1,0 +1,174 @@
+/* Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
+ *   and Toluwaloju Alabi
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ */
+
+Contents:
+        Overview: provides basic information about bucketSelecet
+        Code Description: remarks about how the code works, what it does,
+                           why it is done that way, etc. 
+      
+ ************************************************************************
+ ********************** OVERVIEW ****************************************
+ ************************************************************************  
+
+Bucket select is and adaptation of a bucket sort. That is elements are
+placed into buckets based upon their value. After that we can determine
+from the bucket counts which bucket contains the kth largest element. Once
+that is done we recurse on that bucket until there is only one possibility
+for the kth largest element. This implementation has two phases. In phase
+one once the bucket containing the kth largest element is identified its
+elements are written out to another smaller vector. In phase two the vector
+is not rewritten but rather we simply redo the bucket definitions. 
+
+
+ ************************************************************************
+ ********************** CODE DESCRIPTION ********************************
+ ************************************************************************ 
+
+bucketSelectWrapper:
+        d_vector the problem vector
+        length: the length of the problem vector
+        K: the desired order statistic
+        blocks: how many blocks the algorithm should use
+        thread: how many threads each block should use. 
+
+    The first step is transform K to represent the kth smallest element. Ie
+    in a list of 10 items the largest is also the 10th smallest. 
+
+    Then depending upon the length of the vector either phaseOne or
+    phaseTwo is called. 
+
+
+phaseOne:
+        d_vector: the incoming problem vector
+        length: the size of d_vector
+        K: which smallest element is desired
+        blocks: the total number of blocks to launch
+        threads: the number of threads per block
+        pass: how many times phaseOne has been called previously
+
+        There is approximately 20 lines of set up, ie declaring and
+        initializing variables. The first important step is when the
+        minimum and maximum element of the list is found. Before we do any
+        further processing we do three checks.
+
+        1. if maximum == minimum. If this is the case then the vector only
+        contains one value, so we know the the answer is maximum
+        2. If K==1, that is if we are looking for the smallest element we
+        simply return the minimum
+        3. If K == length, if we want the largest element return maximum. 
+
+        This is likely not going to be used in pass 0, since presumably the
+        user would just use thrust::min or thrust::max, however it is
+        potentially useful in subsequent passes. 
+
+        Once we have obtained the maximum and minimum elements we calculate
+        the range, which is simply max - min. From there we calculate the
+        "slope" which is simply the range of each bucket. It is called
+        slope because it is the slope used when we assign buckets using a
+        linear projection. 
+
+        With the, max, min, range, and slope in hand we can proceed to the
+        next step which is to actually assign elements to buckets. The
+        details of this can be seen in the description of assignBucket. The
+        important fact is that after it is run there is an array that tells
+        us which bucket each element goes into, and there is an array that
+        tells us how many element are in each bucket. 
+
+        With the bucket assignments, and the bucket countswe next determine
+        the kthBucket, that is the bucket into which the kth smallest
+        element was placed. Additionally we see how many elements are in
+        kthBucket. Also we record how many elements are in buckets previous
+        to the kthBucket(ie buckets with smaller elements), this is
+        recorded in 
+        
+        After this we adjust K. this must be done because in later passes
+        it would not make sense to reference K, ie instead of looking for
+        the 834th smallest element out of 1000, we might be looking for the
+        18th smallest out of 20. This step does not have to be performed
+        here, it just needs to be performed after the count of kth bucket is
+        found and before we call the next pass. 
+
+        Now we have identified kthBucket we copy its elements to a new
+        vector and recurse. For more details on the copying step see
+        copyElement.
+
+        Now we have all the information to solve a NEW k selection problem,
+        the vector is whichever elements were in kthBucket, and the new
+        value of K;
+
+        If there was only one element in kthBucket we can simply return
+        that value. 
+
+        Otherwise we do another pass. Which type of pass we do is dependent
+        upon the size of the new problem. There is a cutoff point that when
+        the problem size falls below we will transition into phase
+        two. Also do a maximum of 2 passes of phase one. This is due to the
+        fact that it is essentially only  in adversarial vectors that the
+        problem will not have had its size reduced to below the cuttof by
+        this point. And If you are dealing with an adversarial vector it is
+        likely that you would only want to do phase two anyways since you
+        would be spared the task of rewriting essentially the whole vector
+        for each pass. However we have left in the code that will free
+        "d_vector" if we are not doing the first pass. This is due to
+        the fact that if the code was changed to allow more than two passes
+        of phaseOne you could end up with a memory leak if it was not
+        freed. 
+
+        If the size is below the cuttof point, phase one has been run twice
+        you transition to phaseTwo. 
+        
+
+phaseTwo:
+        d_vector: the incoming problem vector
+        length: the size of d_vector
+        K: which smallest element is desired
+        blocks: the total number of blocks to launch
+        threads: the number of threads per block
+        maxValue: defaults to 0, but it will be passed in if phaseOne is
+        calling phaseTwo
+        minValue: defaults to 0, but it will be passed in if phaseOne is
+        calling phaseTwo
+
+The beginning of phaseTwo is quite similar to the beginning of phaseOne, the
+main difference is in how maxValue, and minValue are determined. We first
+check to see what values have been passed in to phaseTwo as maxValue and
+minValue. If the two values are the same then we know that it was not
+phaseOne that called phaseTwo, this is because if maxValue had equaled
+minValue, phaseOne would have terminated because it would know the
+answer. So if the values are the same it must be because the values being
+used are the default values; which means that phaseTwo is being called
+because the original list is smaller than the cuttof point. So we have to
+actually look at the list to identify the max and min values. Essentially
+immediately we again check to see if maxValue and minValue are the same,
+this is to take care of the case where all the element in the list are the
+same. 
+
+From here on we once again assign the buckets and calculate which bucket
+contains the kth element,KBucket, and how many elements are in that
+bucket,Kbucket_count. Now we enter a while loop. The while loop runs as
+long as there is more than one element left in Kbucket. We stop after 1000
+iterations, this is a remanent from debugging phases. It should never be
+the case that there are 1000 iterations, since each iteration narrows the
+width of the bucket by a factor of at least 2^10. However if there is some
+error inside the loop it could potentially never terminate. 
+
+Our first step is to calculate the min and max values for Kbucket. We do
+this by calculating what the points define Kbucket. We also adjust K. If
+the maxValue and minValue are are equal, then we know that there is only
+one potential value contained in Kbucket, so we can simply return that
+value. Otherwise we reassign element to their appropriate buckets. 
+
+One we have exited the loop, we know that there is only one element left in
+Kbucket. So we simply copy it and return. 
