@@ -14,7 +14,7 @@
  */
 
 Contents:
-        Overview: provides basic information about bucketSelecet
+        Overview: provides basic information about bucketSelect
         Code Description: remarks about how the code works, what it does,
                            why it is done that way, etc. 
       
@@ -86,12 +86,12 @@ phaseOne:
         us which bucket each element goes into, and there is an array that
         tells us how many element are in each bucket. 
 
-        With the bucket assignments, and the bucket countswe next determine
+        With the bucket assignments, and the bucket counts, we next determine
         the kthBucket, that is the bucket into which the kth smallest
         element was placed. Additionally we see how many elements are in
         kthBucket. Also we record how many elements are in buckets previous
         to the kthBucket(ie buckets with smaller elements), this is
-        recorded in 
+        recorded in.
         
         After this we adjust K. this must be done because in later passes
         it would not make sense to reference K, ie instead of looking for
@@ -100,7 +100,7 @@ phaseOne:
         here, it just needs to be performed after the count of kth bucket is
         found and before we call the next pass. 
 
-        Now we have identified kthBucket we copy its elements to a new
+        Now we have identified kthBucket, we copy its elements to a new
         vector and recurse. For more details on the copying step see
         copyElement.
 
@@ -116,7 +116,7 @@ phaseOne:
         the problem size falls below we will transition into phase
         two. Also do a maximum of 2 passes of phase one. This is due to the
         fact that it is essentially only  in adversarial vectors that the
-        problem will not have had its size reduced to below the cuttof by
+        problem will not have had its size reduced to below the cutoff by
         this point. And If you are dealing with an adversarial vector it is
         likely that you would only want to do phase two anyways since you
         would be spared the task of rewriting essentially the whole vector
