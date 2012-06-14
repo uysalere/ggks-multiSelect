@@ -390,6 +390,352 @@ namespace BucketSelect{
     return kthValue;
   }
 
+  
+  /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
+  /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
+  /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
+
+  void createRandomMatrix(float * d_A, int size, int seed) {
+    curandGenerator_t gen;
+
+    curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+    curandSetPseudoRandomGeneratorSeed(gen, seed);
+
+    curandGenerateUniform(gen, d_A, size);
+
+    curandDestroyGenerator(gen);
+  }
+
+  __global__ void enlargeIndexAndGetElements (float * in, float * list, int size) {
+    *(in + threadIdx.x) = *(list + ((int) (*(in + threadIdx.x) * size)));
+
+    // printf("%f\n", *(in + threadIdx.x));
+  }
+
+  void printStuff (float * d_list, int size) {
+    float * p = (float *) malloc (sizeof (float) * size);
+
+    cudaMemcpy (p, d_list, sizeof (float) * size, cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < 20; i++)
+      printf("%f\n", *(p+i));
+  
+    free(p);
+  }
+
+  void generateSplitters (float * splitters, float * slopes, float * d_list, int numElements, int numSplitters, int sampleSize) {
+
+    float * d_randoms;
+  
+    cudaMalloc ((void **) &d_randoms, sizeof (float) * sampleSize);
+  
+    createRandomMatrix (d_randoms, sampleSize, 1);
+
+    // turn randoms floats into necessary indices
+    enlargeIndexAndGetElements<<<1, sampleSize>>>(d_randoms, d_list, numElements);
+
+    thrust::device_ptr<float>list_ptr(d_list);
+    thrust::pair<thrust::device_ptr<float>, thrust::device_ptr<float> > extrema = thrust::minmax_element (list_ptr, list_ptr + numElements);
+
+    splitters[0] = *(extrema.first); 
+    splitters[numSplitters-1] = *(extrema.second);
+
+    thrust::device_ptr<float>randoms_ptr(d_randoms);
+    thrust::sort(randoms_ptr, randoms_ptr + sampleSize);
+
+    //cudaThreadSynchronize();
+    //printStuff (d_randoms, sampleSize);
+
+    for (int i = 1; i < numSplitters - 1; i++) {
+      // splitters[i] = (sampleSize / (numSplitters - 1) * i)
+      cudaMemcpy (splitters + i, d_randoms +(sampleSize / (numSplitters - 1) * i), sizeof (float), cudaMemcpyDeviceToHost);
+      slopes[i-1] = (splitters[i] - splitters[i-1]) / (sampleSize / (numSplitters - 1));
+    }
+    slopes[numSplitters-2] = (splitters[numSplitters-1] - splitters[numSplitters-2]) / (sampleSize / (numSplitters - 1));
+  
+    cudaFree(d_randoms);
+  
+  
+    /*
+      for (int i = 0; i < sampleSize; i++) {
+      cudaMemcpy (randoms + i, d_list + randomIndices[i], sizeof (float), cudaMemcpyDeviceToHost); 
+      printf("%f\n", randoms[i]);
+      }
+
+      thrust::sort (randoms, randoms + sampleSize);
+
+      for (int i = 0; i < 100; i++)
+      {
+      
+      }
+  
+      /*
+      thrust::device_ptr<int>dev_ptr2(d_randoms);
+      thrust::sort (dev_ptr2, dev_ptr2 + sampleSize);
+  
+      for (int i = 0; i < 100; i++)
+      {
+      //int x = *(dev_ptr + i);
+      int x = *(d_randoms+i);
+      printf("%d\n", x);
+      }
+    */
+  
+  }
+  
+ //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
+  template <typename T>
+  __global__ void assignSmartBucket(T* d_vector, int length, int bucketNumbers, double slope, double minimum, int* bucket, uint* bucketCount, int offset){
+  
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int bucketIndex;
+    extern __shared__ uint sharedBuckets[];
+    int index = threadIdx.x;  
+ 
+    //variables in shared memory for fast access
+    __shared__ int sbucketNums;
+    __shared__ double sMin;
+    sbucketNums = bucketNumbers;
+    sMin = minimum;
+
+    //reading bucket counts into shared memory where increments will be performed
+    if(index < bucketNumbers){
+      sharedBuckets[index] = 0;
+    }
+    syncthreads();
+
+    //assigning elements to buckets and incrementing the bucket counts
+    if(idx < length)    {
+      int i;
+      for(i=idx; i< length; i+=offset){   
+        //calculate the bucketIndex for each element
+        bucketIndex =  (d_vector[i] - sMin) * slope;
+
+        //if it goes beyond the number of buckets, put it in the last bucket
+        if(bucketIndex >= sbucketNums){
+          bucketIndex = sbucketNums - 1;
+        }
+        bucket[i] = bucketIndex;
+        atomicInc(&sharedBuckets[bucketIndex], length);
+      }
+    }
+
+    syncthreads();
+
+    //reading bucket counts from shared memory back to global memory
+    if(index < bucketNumbers){
+      atomicAdd(&bucketCount[index], sharedBuckets[index]);
+    }
+  }
+
+  
+  
+    template <typename T>
+  T phaseTwoR(T* d_vector, int length, int K, int blocks, int threads, double maxValue = 0, double minValue = 0){ 
+    //declaring and initializing variables for kernel launches
+    int threadsPerBlock = threads;
+    int numBlocks = blocks;
+    int numBuckets = 1024;
+    int offset = blocks * threads;
+
+    uint sum=0, Kbucket=0, iter=0;
+    int Kbucket_count = 0;
+ 
+    //initializing variables for kernel launches
+    if(length < 1024){
+      numBlocks = 1;
+    }
+    //variable to store the end result
+    T kthValue =0;
+
+    //declaring and initializing other variables
+    size_t size = length * sizeof(int);
+    size_t totalBucketSize = numBuckets * sizeof(uint);
+
+    //allocate memory to store bucket assignments and to count elements in buckets
+    int* elementToBucket;
+    uint* d_bucketCount;
+    cudaMalloc(&elementToBucket, size);
+    cudaMalloc(&d_bucketCount, totalBucketSize);
+    uint * h_bucketCount = (uint*)malloc(totalBucketSize);
+
+    T* d_Kth_val;
+    cudaMalloc(&d_Kth_val, sizeof(T));
+
+    thrust::device_ptr<T>dev_ptr(d_vector);
+    //if max == min, then we know that it must not have had the values passed in. 
+    if(maxValue == minValue){
+      thrust::pair<thrust::device_ptr<T>, thrust::device_ptr<T> > result = thrust::minmax_element(dev_ptr, dev_ptr + length);
+      minValue = *result.first;
+      maxValue = *result.second;
+    }
+    double slope = (numBuckets - 1)/(maxValue - minValue);
+    //first check is max is equal to min
+    if(maxValue == minValue){
+      cleanup(h_bucketCount, d_Kth_val, elementToBucket,d_bucketCount);
+      return maxValue;
+    }
+
+    //make all entries of this vector equal to zero
+    setToAllZero(d_bucketCount, numBuckets);
+    //distribute elements to bucket
+    assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, slope, minValue, elementToBucket, d_bucketCount, offset);
+
+    //find the bucket containing the kth element we want
+    Kbucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &sum);
+    Kbucket_count = h_bucketCount[Kbucket];
+
+    while ( (Kbucket_count > 1) && (iter < 1000)){
+      minValue = max(minValue, minValue + Kbucket/slope);
+      maxValue = min(maxValue, minValue + 1/slope);
+
+      K = K - sum + Kbucket_count;
+
+      if ( maxValue - minValue > 0.0f ){
+        slope = (numBuckets - 1)/(maxValue-minValue);
+        setToAllZero(d_bucketCount, numBuckets);
+        reassignBucket<<< numBlocks, threadsPerBlock, numBuckets * sizeof(uint) >>>(d_vector, elementToBucket, d_bucketCount, numBuckets,length, slope, maxValue, minValue, offset, Kbucket);
+
+        sum = 0;
+        Kbucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &sum);
+        Kbucket_count = h_bucketCount[Kbucket];
+
+        iter++;
+      }
+      else{
+        //if the max and min are the same, then we are done
+        cleanup(h_bucketCount, d_Kth_val, elementToBucket, d_bucketCount);
+        return maxValue;
+      }
+    }
+
+    GetKvalue<<<numBlocks, threadsPerBlock >>>(d_vector, elementToBucket, Kbucket, length, d_Kth_val, offset);
+    cudaMemcpy(&kthValue, d_Kth_val, sizeof(T), cudaMemcpyDeviceToHost);
+    cudaThreadSynchronize();
+  
+
+    cleanup(h_bucketCount, d_Kth_val, elementToBucket, d_bucketCount);
+    return kthValue;
+  }
+
+
+
+  /* this function finds the kth-largest element from the input array */
+  template <typename T>
+  T phaseOneR(T* d_vector, int length, int K, int blocks, int threads, int pass = 0){
+    //declaring variables for kernel launches
+    int threadsPerBlock = threads;
+    int numBlocks = blocks;
+    int numBuckets = 1024;
+    int offset = blocks * threads;
+    int kthBucket, kthBucketCount;
+    int newInputLength;
+    int* elementToBucket; //array showing what bucket every element is in
+    //declaring and initializing other variables
+
+    uint *d_bucketCount, *count; //array showing the number of elements in each bucket
+    uint kthBucketScanSize = 0;
+
+    size_t size = length * sizeof(int);
+
+    //variable to store the end result
+    T kthValue = 0;
+    T* newInput;
+
+    //find max and min with thrust
+    double maximum, minimum;
+
+    thrust::device_ptr<T>dev_ptr(d_vector);
+    thrust::pair<thrust::device_ptr<T>, thrust::device_ptr<T> > result = thrust::minmax_element(dev_ptr, dev_ptr + length);
+
+    minimum = *result.first;
+    maximum = *result.second;
+
+    //if the max and the min are the same, then we are done
+    if(maximum == minimum){
+      return maximum;
+    }
+    //if we want the max or min just return it
+    if(K == 1){
+      return minimum;
+    }
+    if(K == length){
+      return maximum;
+    }		
+    //Allocate memory to store bucket assignments
+  
+    CUDA_CALL(cudaMalloc(&elementToBucket, size));
+
+    //Allocate memory to store bucket counts
+    size_t totalBucketSize = numBuckets * sizeof(uint);
+    CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
+    uint* h_bucketCount = (uint*)malloc(totalBucketSize);
+
+    //Calculate max-min
+    double range = maximum - minimum;
+    //Calculate the slope, i.e numBuckets/range
+    double slope = (numBuckets - 1)/range;
+
+    cudaMalloc(&count, sizeof(uint));
+    //Set the bucket count vector to all zeros
+    setToAllZero(d_bucketCount, numBuckets);
+
+    //Distribute elements into their respective buckets
+    assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, slope, minimum, elementToBucket, d_bucketCount, offset);
+    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
+    kthBucketCount = h_bucketCount[kthBucket];
+ 
+
+    //we must update K since we have reduced the problem size to elements in the kth bucket
+    if(kthBucket != 0){
+      K = kthBucketCount - (kthBucketScanSize - K);
+    }
+
+    //copy elements in the kth bucket to a new array
+    cudaMalloc(&newInput, kthBucketCount * sizeof(T));
+    setToAllZero(count, 1);
+    copyElement<<<numBlocks, threadsPerBlock>>>(d_vector, length, elementToBucket, kthBucket, newInput, count, offset);
+
+
+    //store the length of the newly copied elements
+    newInputLength = kthBucketCount;
+
+
+    //if we only copied one element, then we are done
+    if(newInputLength == 1){
+      thrust::device_ptr<T>new_ptr(newInput);
+      kthValue = new_ptr[0];
+      
+      //free all used memory
+      cudaFree(elementToBucket); cudaFree(d_bucketCount); cudaFree(count); cudaFree(newInput);
+      return kthValue;
+    }
+ 
+    /*********************************************************************/
+    //END OF FIRST PASS, NOW WE PROCEED TO SUBSEQUENT PASSES
+    /*********************************************************************/
+
+    //if the new length is greater than the CUTOFF, run the regular phaseOne again
+    if(newInputLength > CUTOFF_POINT && pass < 1){
+      if(pass > 0){
+        cudaFree(d_vector);
+      }
+      cudaFree(elementToBucket);  cudaFree(d_bucketCount); cudaFree(count);
+      kthValue = phaseOne(newInput, newInputLength, K, blocks, threads,pass + 1);
+    }
+    else{
+      minimum = max(minimum, minimum + kthBucket/slope);
+      maximum = min(maximum, minimum + 1/slope);
+      kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
+    }
+
+
+    //free all used memory
+    cudaFree(elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);
+
+    return kthValue;
+  }
+
   /**************************************************************************/
   /**************************************************************************/
   //THIS IS THE BUCKETSELECT FUNCTION WRAPPER THAT CHOOSES THE CORRECT VERSION
@@ -415,6 +761,12 @@ namespace BucketSelect{
 
   }
 
+
+  /**************************************************************************/
+  /**************************************************************************/
+  //THIS IS THE RANDOMIZEDBUCKETSELECT FUNCTION WRAPPER THAT CHOOSES THE CORRECT
+  //VERSION OF BUCKET SELECT TO RUN BASED ON THE INPUT LENGTH
+  /**************************************************************************/
   template <typename T>
   T randomizedBucketSelectWrapper(T* d_vector, int length, int K, int blocks, int threads)
   {
@@ -424,12 +776,12 @@ namespace BucketSelect{
 
     if(length <= CUTOFF_POINT)
       {
-        kthValue = phaseTwo(d_vector, length, K, blocks, threads);
+        kthValue = phaseTwoR(d_vector, length, K, blocks, threads);
         return kthValue;
       }
     else
       {
-        kthValue = phaseOne(d_vector, length, K, blocks, threads);
+        kthValue = phaseOneR(d_vector, length, K, blocks, threads);
         return kthValue;
       }
 
