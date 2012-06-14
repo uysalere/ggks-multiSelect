@@ -61,6 +61,8 @@ void generateSplitters (float * splitters, float * slopes, float * d_list, int n
   }
   slopes[numSplitters-2] = (splitters[numSplitters-1] - splitters[numSplitters-2]) / (sampleSize / (numSplitters - 1));
   
+  cudaFree(d_randoms);
+  
   
   /*
   for (int i = 0; i < sampleSize; i++) {
@@ -118,5 +120,9 @@ int main() {
   for (int i = 0; i < numSplitters-1; i++)
     printf ("slopes[%d] = %f\n", i, slopes[i]);
     
+  free(slopes);
+  free(splitters);
+  free(list);
+
   return 0;
 }

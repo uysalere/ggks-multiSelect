@@ -161,7 +161,7 @@ results_t<T>* timeCuttingPlane(T *h_vec, uint size, uint k){
 //FUNCTION TO TIME BUCKET SELECT
 template<typename T>
 results_t<T>* timeBucketSelect(T* hostVec, uint size, uint k){
-cudaEvent_t start, stop;
+  cudaEvent_t start, stop;
   float time;
   results_t<T> *result;
   T retFromSelect;
@@ -175,6 +175,34 @@ cudaEvent_t start, stop;
   cudaEventRecord(start, 0);
 
   retFromSelect = BucketSelect::bucketSelectWrapper(deviceVec, size, k, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+ 
+  cudaEventRecord(stop, 0);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&time,start,stop);
+
+
+  wrapupForTiming(start,stop, deviceVec, result, time, retFromSelect);
+  return result;
+
+}
+
+//FUNCTION TO TIME RANDOMIZED BUCKET SELECT
+template<typename T>
+results_t<T>* randomizedTimeBucketSelect(T* hostVec, uint size, uint k){
+  cudaEvent_t start, stop;
+  float time;
+  results_t<T> *result;
+  T retFromSelect;
+  T* deviceVec;
+  cudaDeviceProp dp;
+  cudaGetDeviceProperties(&dp,0);
+
+
+  setupForTiming(start,stop, &deviceVec, hostVec, size, &result);
+
+  cudaEventRecord(start, 0);
+
+  retFromSelect = BucketSelect::randomizedBucketSelectWrapper(deviceVec, size, k, dp.multiProcessorCount, dp.maxThreadsPerBlock);
  
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
