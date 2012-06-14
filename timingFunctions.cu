@@ -188,7 +188,7 @@ results_t<T>* timeBucketSelect(T* hostVec, uint size, uint k){
 
 //FUNCTION TO TIME RANDOMIZED BUCKET SELECT
 template<typename T>
-results_t<T>* randomizedTimeBucketSelect(T* hostVec, uint size, uint k){
+results_t<T>* timeRandomizedBucketSelect(T* hostVec, uint size, uint k){
   cudaEvent_t start, stop;
   float time;
   results_t<T> *result;

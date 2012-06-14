@@ -45,8 +45,8 @@
 #include "generateProblems.cu"
 #include "timingFunctions.cu"
 
-#define NUMBEROFALGORITHMS 5
-char* namesOfTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and choose", "Radix select","Bucket Select","Plane Cutting","Randomized Select"}; 
+#define NUMBEROFALGORITHMS 6
+char* namesOfTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and choose", "Radix select","Bucket Select", "Rand Bucket Select", "Plane Cutting","Randomized Select"}; 
  
 using namespace std;
 template<typename T>
@@ -68,7 +68,7 @@ void compareAlgorithms(uint size, uint k, uint numTests,uint *algorithmsToTest, 
   typedef results_t<T>* (*ptrToTimingFunction)(T*, uint, uint);
   typedef void (*ptrToGeneratingFunction)(T*, uint, curandGenerator_t);
   //these are the functions that can be called
-  ptrToTimingFunction arrayOfTimingFunctions[NUMBEROFALGORITHMS] = {&timeSortAndChoose<T>,&timeRadixSelect<T>, &timeBucketSelect<T>, &timeCuttingPlane<T>, &timeRandomizedSelect<T>};
+  ptrToTimingFunction arrayOfTimingFunctions[NUMBEROFALGORITHMS] = {&timeSortAndChoose<T>,&timeRadixSelect<T>, &timeBucketSelect<T>, &timeRandomizedBucketSelect<T>, &timeCuttingPlane<T>, &timeRandomizedSelect<T>};
   
   ptrToGeneratingFunction *arrayOfGenerators;
   char** namesOfGeneratingFunctions;
@@ -206,7 +206,7 @@ void compareAlgorithms(uint size, uint k, uint numTests,uint *algorithmsToTest, 
 
 template<typename T>
 void runTests(uint generateType, char* fileName,uint startPower, uint stopPower, uint timesToTestEachK = 100){
-  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1,1,1,0,0};
+  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1,1,1,1,0,0};
   uint size;
   uint i;
   uint arrayOfKs[25];
@@ -259,7 +259,7 @@ int main(int argc, char** argv)
     runTests<float>(distributionType,fileName,startPower,stopPower,testCount);
     break;
   case 2:
-    runTests<double>(distributionType,fileName,startPower,stopPower,testCount);
+    // runTests<double>(distributionType,fileName,startPower,stopPower,testCount);
     break;
   case 3:
     // runTests<uint>(distributionType,fileName,startPower,stopPower,testCount);
