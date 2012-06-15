@@ -338,6 +338,7 @@ namespace BucketSelect{
 
     //Distribute elements into their respective buckets
     assignBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, slope, minimum, elementToBucket, d_bucketCount, offset);
+    
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
     kthBucketCount = h_bucketCount[kthBucket];
  
@@ -439,7 +440,6 @@ namespace BucketSelect{
     
     slopes[numPivots-2] = (pivots[numPivots-1] - pivots[numPivots-2]) / (sampleSize / (numPivots - 1));
   
-    free(randoms_ptr);
     cudaFree(d_randoms);
   }
   
@@ -509,98 +509,6 @@ namespace BucketSelect{
       atomicAdd(&bucketCount[index], sharedBuckets[index]);
     }
   }
-
-  
-  
-    template <typename T>
-  T phaseTwoR(T* d_vector, int length, int K, int blocks, int threads, double maxValue = 0, double minValue = 0){ 
-    //declaring and initializing variables for kernel launches
-    int threadsPerBlock = threads;
-    int numBlocks = blocks;
-    int numBuckets = 1024;
-    int offset = blocks * threads;
-
-    uint sum=0, Kbucket=0, iter=0;
-    int Kbucket_count = 0;
- 
-    //initializing variables for kernel launches
-    if(length < 1024){
-      numBlocks = 1;
-    }
-    //variable to store the end result
-    T kthValue =0;
-
-    //declaring and initializing other variables
-    size_t size = length * sizeof(int);
-    size_t totalBucketSize = numBuckets * sizeof(uint);
-
-    //allocate memory to store bucket assignments and to count elements in buckets
-    int* elementToBucket;
-    uint* d_bucketCount;
-    cudaMalloc(&elementToBucket, size);
-    cudaMalloc(&d_bucketCount, totalBucketSize);
-    uint * h_bucketCount = (uint*)malloc(totalBucketSize);
-
-    T* d_Kth_val;
-    cudaMalloc(&d_Kth_val, sizeof(T));
-
-    thrust::device_ptr<T>dev_ptr(d_vector);
-    //if max == min, then we know that it must not have had the values passed in. 
-    if(maxValue == minValue){
-      thrust::pair<thrust::device_ptr<T>, thrust::device_ptr<T> > result = thrust::minmax_element(dev_ptr, dev_ptr + length);
-      minValue = *result.first;
-      maxValue = *result.second;
-    }
-    double slope = (numBuckets - 1)/(maxValue - minValue);
-    //first check is max is equal to min
-    if(maxValue == minValue){
-      cleanup(h_bucketCount, d_Kth_val, elementToBucket,d_bucketCount);
-      return maxValue;
-    }
-
-    //make all entries of this vector equal to zero
-    setToAllZero(d_bucketCount, numBuckets);
-    //distribute elements to bucket
-    assignBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, slope, minValue, elementToBucket, d_bucketCount, offset);
-
-    //find the bucket containing the kth element we want
-    Kbucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &sum);
-    Kbucket_count = h_bucketCount[Kbucket];
-
-    while ( (Kbucket_count > 1) && (iter < 1000)){
-      minValue = max(minValue, minValue + Kbucket/slope);
-      maxValue = min(maxValue, minValue + 1/slope);
-
-      K = K - sum + Kbucket_count;
-
-      if ( maxValue - minValue > 0.0f ){
-        slope = (numBuckets - 1)/(maxValue-minValue);
-        setToAllZero(d_bucketCount, numBuckets);
-        reassignBucket<<< numBlocks, threadsPerBlock, numBuckets * sizeof(uint) >>>(d_vector, elementToBucket, d_bucketCount, numBuckets,length, slope, maxValue, minValue, offset, Kbucket);
-
-        sum = 0;
-        Kbucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &sum);
-        Kbucket_count = h_bucketCount[Kbucket];
-
-        iter++;
-      }
-      else{
-        //if the max and min are the same, then we are done
-        cleanup(h_bucketCount, d_Kth_val, elementToBucket, d_bucketCount);
-        return maxValue;
-      }
-    }
-
-    GetKvalue<<<numBlocks, threadsPerBlock >>>(d_vector, elementToBucket, Kbucket, length, d_Kth_val, offset);
-    cudaMemcpy(&kthValue, d_Kth_val, sizeof(T), cudaMemcpyDeviceToHost);
-    cudaThreadSynchronize();
-  
-
-    cleanup(h_bucketCount, d_Kth_val, elementToBucket, d_bucketCount);
-    return kthValue;
-  }
-
-
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
@@ -781,7 +689,7 @@ namespace BucketSelect{
 
     if(length <= CUTOFF_POINT)
       {
-        kthValue = phaseTwoR(d_vector, length, K, blocks, threads);
+        kthValue = phaseTwo(d_vector, length, K, blocks, threads);
         return kthValue;
       }
     else

@@ -94,35 +94,38 @@ void generateSplitters (float * splitters, float * slopes, float * d_list, int n
 
 
 int main() {
-  int numElements = 10000000;
-  int sampleSize = 1024;
-  int numSplitters = 9;
+
+  for (int i = 0; i < 1000; i++) {
+    int numElements = 1000000;
+    int sampleSize = 1024;
+    int numSplitters = 9;
   
-  float splitters[numSplitters];
-  float slopes[numSplitters - 1];
+    float splitters[numSplitters];
+    float slopes[numSplitters - 1];
   
-  float * list = (float *) malloc (numElements * sizeof (float));
+    float * list = (float *) malloc (numElements * sizeof (float));
 
-  // initialize array
-  for (int i = 0; i < numElements; i++)
-    list[i] = (float) i;
+    // initialize array
+    for (int j = 0; j < numElements; j++)
+      list[j] = (float) j;
 
-  float * d_list;
-  cudaMalloc ((void **) &d_list, numElements * sizeof (float));
-  cudaMemcpy(d_list, list, numElements * sizeof (float), cudaMemcpyHostToDevice);
+    float * d_list;
+    cudaMalloc ((void **) &d_list, numElements * sizeof (float));
+    cudaMemcpy(d_list, list, numElements * sizeof (float), cudaMemcpyHostToDevice);
   
-  generateSplitters (splitters, slopes, d_list, numElements, numSplitters, sampleSize);
-  //  generateSlopes (slopes, splitters, numSplitters);
+    generateSplitters (splitters, slopes, d_list, numElements, numSplitters, sampleSize);
 
-  for (int i = 0; i < numSplitters; i++)
-    printf ("splitter[%d] = %f\n", i, splitters[i]);
+    // for (int i = 0; i < numSplitters; i++)
+    //   printf ("splitter[%d] = %f\n", i, splitters[i]);
 
-  for (int i = 0; i < numSplitters-1; i++)
-    printf ("slopes[%d] = %f\n", i, slopes[i]);
+    //   for (int i = 0; i < numSplitters-1; i++)
+    // printf ("slopes[%d] = %f\n", i, slopes[i]);
     
-  free(slopes);
-  free(splitters);
-  free(list);
-
+    // free(slopes);
+    // free(splitters);
+    free(list);
+    cudaFree(d_list);
+  }
+  
   return 0;
 }
