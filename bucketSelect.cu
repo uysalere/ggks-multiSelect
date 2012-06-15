@@ -12,12 +12,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <stdio.h>
+#include <thrust/sort.h>
 
 namespace BucketSelect{
   using namespace std;
 
 #define MAX_THREADS_PER_BLOCK 1024
-#define CUTOFF_POINT 2200000 
+#define CUTOFF_POINT 200000 
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {      \
       printf("Error at %s:%d\n",__FILE__,__LINE__);     \
@@ -437,6 +439,7 @@ namespace BucketSelect{
     
     slopes[numPivots-2] = (pivots[numPivots-1] - pivots[numPivots-2]) / (sampleSize / (numPivots - 1));
   
+    free(randoms_ptr);
     cudaFree(d_randoms);
   }
   
@@ -656,9 +659,11 @@ namespace BucketSelect{
     //Declare slopes and pivots
     double slopes[numPivots - 1];
     T pivots[numPivots];
-
+    
     //Find bucket sizes using a randomized selection
     generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, minimum, maximum);
+    printf("after genpivots\n");
+    
     
     cudaMalloc(&count, sizeof(uint));
     //Set the bucket count vector to all zeros
@@ -669,7 +674,7 @@ namespace BucketSelect{
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
     kthBucketCount = h_bucketCount[kthBucket];
  
-
+    printf("after assignSmartBucket\n");
     //we must update K since we have reduced the problem size to elements in the kth bucket
     if(kthBucket != 0){
       K = kthBucketCount - (kthBucketScanSize - K);
@@ -713,7 +718,10 @@ namespace BucketSelect{
       int pivotIndex = kthBucket/pivotOffset;
       int pivotInnerindex = kthBucket - pivotOffset * pivotIndex;
       minimum = max(minimum, pivots[pivotIndex] + slopes[pivotIndex] * pivotInnerindex); 
-      maximum = min(maximum, pivots[pivotIndex] + slopes[pivotIndex] * (pivotInnerindex+1));  
+      maximum = min(maximum, pivots[pivotIndex] + slopes[pivotIndex] * (pivotInnerindex+1));
+
+      printf("kthBucket = %d\n", kthBucket);
+      
       kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
       
       /*
@@ -727,6 +735,8 @@ namespace BucketSelect{
     //free all used memory
     cudaFree(elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);
 
+
+    printf("end of phase1, k = %f\n", kthValue);
     return kthValue;
   }
 
@@ -750,6 +760,7 @@ namespace BucketSelect{
     else
       {
         kthValue = phaseOne(d_vector, length, K, blocks, threads);
+        printf("After Call PhaseOne in bucket, kthvalue = %f.\n", kthValue);
         return kthValue;
       }
 
@@ -775,7 +786,9 @@ namespace BucketSelect{
       }
     else
       {
+        printf("Call PhaseOneR in parent function.\n");
         kthValue = phaseOneR(d_vector, length, K, blocks, threads);
+        printf("After Call PhaseOneR in parent function, kthvalue = %f.\n", kthValue);
         return kthValue;
       }
 
