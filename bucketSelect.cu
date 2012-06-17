@@ -520,7 +520,12 @@ namespace BucketSelect{
     int offset = blocks * threads;
     int kthBucket, kthBucketCount;
     int newInputLength;
-    int* elementToBucket; //array showing what bucket every element is in
+
+    int* d_elementToBucket; //array showing what bucket every element is in
+    //Allocate memory to store bucket assignments  
+    CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
+
+
     //declaring and initializing other variables
 
     int numPivots = 9;
@@ -555,9 +560,9 @@ namespace BucketSelect{
     if(K == length){
       return maximum;
     }		
-    //Allocate memory to store bucket assignments
-  
-    CUDA_CALL(cudaMalloc(&elementToBucket, size));
+
+    //Allocate memory to store bucket assignments  
+    CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
 
     //Allocate memory to store bucket counts
     size_t totalBucketSize = numBuckets * sizeof(uint);
@@ -572,13 +577,20 @@ namespace BucketSelect{
     generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, minimum, maximum);
     printf("after genpivots\n");
     
-    
-    cudaMalloc(&count, sizeof(uint));
+    //Allocate memories
+    double * d_slopes;
+    CUDA_CALL(cudaMalloc(&d_slopes, (numPivots - 1) * sizeof(double)));
+    cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice);
+    T * d_pivots;
+    CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
+    cudaMemcpy(d_slopes, slopes, numPivots * sizeof(T), cudaMemcpyHostToDevice);
+
+    CUDA_CALL(cudaMalloc(&count, sizeof(uint)));
     //Set the bucket count vector to all zeros
     setToAllZero(d_bucketCount, numBuckets);
 
     //Distribute elements into their respective buckets
-    assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, slopes, pivots, numPivots, elementToBucket, d_bucketCount, offset);
+    assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
     kthBucketCount = h_bucketCount[kthBucket];
  
@@ -591,7 +603,7 @@ namespace BucketSelect{
     //copy elements in the kth bucket to a new array
     cudaMalloc(&newInput, kthBucketCount * sizeof(T));
     setToAllZero(count, 1);
-    copyElement<<<numBlocks, threadsPerBlock>>>(d_vector, length, elementToBucket, kthBucket, newInput, count, offset);
+    copyElement<<<numBlocks, threadsPerBlock>>>(d_vector, length, d_elementToBucket, kthBucket, newInput, count, offset);
 
 
     //store the length of the newly copied elements
@@ -604,7 +616,7 @@ namespace BucketSelect{
       kthValue = new_ptr[0];
       
       //free all used memory
-      cudaFree(elementToBucket); cudaFree(d_bucketCount); cudaFree(count); cudaFree(newInput);
+      cudaFree(elementToBucket); cudaFree(d_bucketCount); cudaFree(count); cudaFree(newInput); cudaFree(d_slopes); cudaFree(d_pivots);
       return kthValue;
     }
  
