@@ -14,6 +14,10 @@
  */
 #include <stdio.h>
 #include <thrust/sort.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/random.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/functional.h>
 
 namespace BucketSelect{
   using namespace std;
@@ -399,15 +403,51 @@ namespace BucketSelect{
   /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
   /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
 
-  void createRandomMatrix(float * d_A, int size, int seed) {
-    curandGenerator_t gen;
 
-    curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-    curandSetPseudoRandomGeneratorSeed(gen, seed);
+__host__ __device__
+unsigned int hash(unsigned int a)
+{
+    a = (a+0x7ed55d16) + (a<<12);
+    a = (a^0xc761c23c) ^ (a>>19);
+    a = (a+0x165667b1) + (a<<5);
+    a = (a+0xd3a2646c) ^ (a<<9);
+    a = (a+0xfd7046c5) + (a<<3);
+    a = (a^0xb55a4f09) ^ (a>>16);
+    return a;
+}
 
-    curandGenerateUniform(gen, d_A, size);
+struct RandomNumberFunctor :
+  public thrust::unary_function<unsigned int, float>
+{
+  unsigned int mainSeed;
 
-    curandDestroyGenerator(gen);
+  RandomNumberFunctor(unsigned int _mainSeed) : 
+    mainSeed(_mainSeed) {}
+  
+  __host__ __device__
+  float operator()(unsigned int threadIdx)
+  {
+    unsigned int seed = hash(threadIdx) * mainSeed;
+
+    thrust::default_random_engine rng(seed);
+    rng.discard(threadIdx);        
+    thrust::uniform_real_distribution<float> u(0,1);
+
+    return u(rng);
+  }
+};
+
+  template <typename T>
+  void createRandomVector(T * d_vec, int size) {
+    timeval t1;
+    uint seed;
+
+    gettimeofday(&t1, NULL);
+    seed = t1.tv_usec * t1.tv_sec;
+  
+    thrust::device_ptr<T> d_ptr(d_vec);
+    thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(size),
+                      d_ptr, RandomNumberFunctor(seed));
   }
 
   template <typename T>
@@ -423,7 +463,7 @@ namespace BucketSelect{
 
     cudaMalloc ((void **) &d_randoms, sizeof (T) * sampleSize);
   
-    createRandomMatrix (d_randoms, sampleSize, 1);
+    createRandomVector (d_randoms, sampleSize);
 
     // converts randoms floats into elements from necessary indices
     enlargeIndexAndGetElements<<<1, sampleSize>>>(d_randoms, d_list, numElements);
