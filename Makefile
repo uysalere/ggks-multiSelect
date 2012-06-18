@@ -28,3 +28,6 @@ compareAlgorithms: compareAlgorithms.cu
 
 #bucketSelect: bucketSelect.cu
 #	$(NVCC) -o bucketSelect bucketSelect.cu $(NVCCFLAGS)
+
+clean:
+	rm -f compareAlgorithms
