@@ -417,12 +417,11 @@ namespace BucketSelect{
   void generatePivots (T * pivots, double * slopes, T * d_list, int numElements, int numPivots, int sampleSize, T min, T max) {
 
     T * d_randoms;
-  
     cudaMalloc ((void **) &d_randoms, sizeof (T) * sampleSize);
   
     createRandomMatrix (d_randoms, sampleSize, 1);
 
-    // turn randoms floats into necessary indices
+    // converts randoms floats into elements from necessary indices
     enlargeIndexAndGetElements<<<1, sampleSize>>>(d_randoms, d_list, numElements);
 
     pivots[0] = min; 
@@ -518,23 +517,21 @@ namespace BucketSelect{
     int numBlocks = blocks;
     int numBuckets = 1024;
     int offset = blocks * threads;
+
+    // bucket counters
     int kthBucket, kthBucketCount;
     int newInputLength;
-
+    size_t size = length * sizeof(int);
     int* d_elementToBucket; //array showing what bucket every element is in
-    //Allocate memory to store bucket assignments  
     CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
 
-
-    //declaring and initializing other variables
-
+    // variables for the randomized selection
     int numPivots = 9;
     int sampleSize = 1024;
     
+    //declaring and initializing other variables
     uint *d_bucketCount, *count; //array showing the number of elements in each bucket
     uint kthBucketScanSize = 0;
-
-    size_t size = length * sizeof(int);
 
     //variable to store the end result
     T kthValue = 0;
@@ -561,9 +558,6 @@ namespace BucketSelect{
       return maximum;
     }		
 
-    //Allocate memory to store bucket assignments  
-    CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
-
     //Allocate memory to store bucket counts
     size_t totalBucketSize = numBuckets * sizeof(uint);
     CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
@@ -583,7 +577,7 @@ namespace BucketSelect{
     cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice);
     T * d_pivots;
     CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
-    cudaMemcpy(d_slopes, slopes, numPivots * sizeof(T), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice);
 
     CUDA_CALL(cudaMalloc(&count, sizeof(uint)));
     //Set the bucket count vector to all zeros
@@ -616,7 +610,7 @@ namespace BucketSelect{
       kthValue = new_ptr[0];
       
       //free all used memory
-      cudaFree(elementToBucket); cudaFree(d_bucketCount); cudaFree(count); cudaFree(newInput); cudaFree(d_slopes); cudaFree(d_pivots);
+      cudaFree(d_elementToBucket); cudaFree(d_bucketCount); cudaFree(count); cudaFree(newInput); cudaFree(d_slopes); cudaFree(d_pivots);
       return kthValue;
     }
  
@@ -629,7 +623,7 @@ namespace BucketSelect{
       if(pass > 0){
         cudaFree(d_vector);
       }
-      cudaFree(elementToBucket);  cudaFree(d_bucketCount); cudaFree(count);
+      cudaFree(d_elementToBucket); cudaFree(d_bucketCount); cudaFree(count); cudaFree(d_slopes); cudaFree(d_pivots);
       kthValue = phaseOne(newInput, newInputLength, K, blocks, threads,pass + 1);
     }
     else{
@@ -653,7 +647,7 @@ namespace BucketSelect{
 
 
     //free all used memory
-    cudaFree(elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);
+    cudaFree(d_elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);cudaFree(d_slopes); cudaFree(d_pivots);
 
 
     printf("end of phase1, k = %f\n", kthValue);
