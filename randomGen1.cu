@@ -14,10 +14,9 @@ void createRandomMatrix(float * d_A, int size, int seed) {
   curandDestroyGenerator(gen);
 }
 
-__global__ void enlargeIndexAndGetElements (float * in, float * list, int size) {
+template <typename T>
+__global__ void enlargeIndexAndGetElements (T * in, T * list, int size) {
   *(in + threadIdx.x) = *(list + ((int) (*(in + threadIdx.x) * size)));
-
-  // printf("%f\n", *(in + threadIdx.x));
 }
 
 void printStuff (float * d_list, int size) {
@@ -31,77 +30,48 @@ void printStuff (float * d_list, int size) {
   free(p);
 }
 
-void generateSplitters (float * splitters, float * slopes, float * d_list, int numElements, int numSplitters, int sampleSize) {
+  template <typename T>
+  void generatePivots (T * pivots, double * slopes, T * d_list, int numElements, int numPivots, int sampleSize, T min, T max) {
 
-  float * d_randoms;
+    T * d_randoms;
+    int pivotOffset = (sampleSize / (numPivots - 1));
+
+    cudaMalloc ((void **) &d_randoms, sizeof (T) * sampleSize);
   
-  cudaMalloc ((void **) &d_randoms, sizeof (float) * sampleSize);
-  
-  createRandomMatrix (d_randoms, sampleSize, 1);
+    createRandomMatrix (d_randoms, sampleSize, 1);
 
-  // turn randoms floats into necessary indices
-  enlargeIndexAndGetElements<<<1, sampleSize>>>(d_randoms, d_list, numElements);
+    // converts randoms floats into elements from necessary indices
+    enlargeIndexAndGetElements<<<1, sampleSize>>>(d_randoms, d_list, numElements);
 
-  thrust::device_ptr<float>list_ptr(d_list);
-  thrust::pair<thrust::device_ptr<float>, thrust::device_ptr<float> > extrema = thrust::minmax_element (list_ptr, list_ptr + numElements);
+    pivots[0] = min; 
+    pivots[numPivots-1] = max;
 
-  splitters[0] = *(extrema.first); 
-  splitters[numSplitters-1] = *(extrema.second);
+    thrust::device_ptr<T>randoms_ptr(d_randoms);
+    thrust::sort(randoms_ptr, randoms_ptr + sampleSize);
 
-  thrust::device_ptr<float>randoms_ptr(d_randoms);
-  thrust::sort(randoms_ptr, randoms_ptr + sampleSize);
+    cudaThreadSynchronize();
 
-  //cudaThreadSynchronize();
-  //printStuff (d_randoms, sampleSize);
-
-  for (int i = 1; i < numSplitters - 1; i++) {
-    // splitters[i] = (sampleSize / (numSplitters - 1) * i)
-    cudaMemcpy (splitters + i, d_randoms +(sampleSize / (numSplitters - 1) * i), sizeof (float), cudaMemcpyDeviceToHost);
-    slopes[i-1] = (splitters[i] - splitters[i-1]) / (sampleSize / (numSplitters - 1));
-  }
-  slopes[numSplitters-2] = (splitters[numSplitters-1] - splitters[numSplitters-2]) / (sampleSize / (numSplitters - 1));
-  
-  cudaFree(d_randoms);
-  
-  
-  /*
-  for (int i = 0; i < sampleSize; i++) {
-    cudaMemcpy (randoms + i, d_list + randomIndices[i], sizeof (float), cudaMemcpyDeviceToHost); 
-    printf("%f\n", randoms[i]);
-  }
-
-  thrust::sort (randoms, randoms + sampleSize);
-
-    for (int i = 0; i < 100; i++)
-    {
-      
+    for (int i = 1; i < numPivots - 1; i++) {
+      cudaMemcpy (pivots + i, d_randoms + pivotOffset * i, sizeof (T), cudaMemcpyDeviceToHost);
+      slopes[i-1] = pivotOffset /(pivots[i] - pivots[i-1]);
     }
+    
+    slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
   
-  /*
-  thrust::device_ptr<int>dev_ptr2(d_randoms);
-  thrust::sort (dev_ptr2, dev_ptr2 + sampleSize);
-  
-  for (int i = 0; i < 100; i++)
-    {
-      //int x = *(dev_ptr + i);
-      int x = *(d_randoms+i);
-      printf("%d\n", x);
-    }
-  */
-  
-}
+    cudaFree(d_randoms);
+  }
 
 
 
 int main() {
 
-  for (int i = 0; i < 1000; i++) {
+  for (int i = 0; i < 1; i++) {
     int numElements = 1000000;
     int sampleSize = 1024;
     int numSplitters = 9;
   
     float splitters[numSplitters];
-    float slopes[numSplitters - 1];
+    double slopes[numSplitters - 1];
   
     float * list = (float *) malloc (numElements * sizeof (float));
 
@@ -112,20 +82,31 @@ int main() {
     float * d_list;
     cudaMalloc ((void **) &d_list, numElements * sizeof (float));
     cudaMemcpy(d_list, list, numElements * sizeof (float), cudaMemcpyHostToDevice);
-  
-    generateSplitters (splitters, slopes, d_list, numElements, numSplitters, sampleSize);
 
-    // for (int i = 0; i < numSplitters; i++)
-    //   printf ("splitter[%d] = %f\n", i, splitters[i]);
+    cudaEvent_t start3, stop3;
+    float time3;
+    cudaEventCreate(&start3);
+    cudaEventCreate(&stop3);
+    cudaEventRecord(start3,0);
 
-    //   for (int i = 0; i < numSplitters-1; i++)
-    // printf ("slopes[%d] = %f\n", i, slopes[i]);
+    /*    template <typename T>
+          void generatePivots (T * pivots, double * slopes, T * d_list, int numElements, int numPivots, int sampleSize, T min, T max) */
+       
+    generatePivots<float>(splitters, slopes, d_list, numElements, numSplitters, sampleSize, list[0], list[numElements-1]);
+
+    cudaThreadSynchronize();
+    cudaEventRecord(stop3,0);
+    cudaEventSynchronize(stop3);
+    cudaEventElapsedTime(&time3, start3, stop3);
+    cudaEventDestroy(start3);
+    cudaEventDestroy(stop3);
     
-    // free(slopes);
-    // free(splitters);
     free(list);
     cudaFree(d_list);
+   
+    printf("time = %f\n", time3);
   }
+
   
   return 0;
 }

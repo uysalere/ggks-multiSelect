@@ -23,7 +23,7 @@
 #include <iomanip>
 #include <math_constants.h>
 
-//the folowing comes from thrust examples, monte_carlo.cu
+//the following comes from thrust examples, monte_carlo.cu
 __host__ __device__
 unsigned int hash(unsigned int a)
 {
