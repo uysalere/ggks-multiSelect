@@ -438,10 +438,10 @@ namespace BucketSelect{
 
     for (int i = 1; i < numPivots - 1; i++) {
       cudaMemcpy (pivots + i, d_randoms + pivotOffset * i, sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[i-1] = (pivots[i] - pivots[i-1]) / pivotOffset;
+      slopes[i-1] = pivotOffset /(pivots[i] - pivots[i-1]);
     }
     
-    slopes[numPivots-2] = (pivots[numPivots-1] - pivots[numPivots-2]) / pivotOffset;
+    slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
   
     cudaFree(d_randoms);
   }
@@ -489,7 +489,7 @@ namespace BucketSelect{
             break;
         }
         
-        bucketIndex = (midPivotIndex * (sbucketNums/(numPivots-1))) + (int) ((num - pivots[midPivotIndex]) / slopes[midPivotIndex]);
+        bucketIndex = (midPivotIndex * (sbucketNums/(numPivots-1))) + (int) ((num - pivots[midPivotIndex]) * slopes[midPivotIndex]);
         
 
         /*
@@ -635,8 +635,8 @@ namespace BucketSelect{
       int pivotOffset = numBuckets / (numPivots - 1);
       int pivotIndex = kthBucket/pivotOffset;
       int pivotInnerindex = kthBucket - pivotOffset * pivotIndex;
-      minimum = max(minimum, pivots[pivotIndex] + slopes[pivotIndex] * pivotInnerindex); 
-      maximum = min(maximum, pivots[pivotIndex] + slopes[pivotIndex] * (pivotInnerindex+1));
+      minimum = max(minimum, pivots[pivotIndex] + pivotInnerindex / slopes[pivotIndex]); 
+      maximum = min(maximum, pivots[pivotIndex] + (pivotInnerindex+1) / slopes[pivotIndex]);
       
       kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
       
