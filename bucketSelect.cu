@@ -342,6 +342,7 @@ namespace BucketSelect{
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
     kthBucketCount = h_bucketCount[kthBucket];
  
+    printf("original kthBucketCount = %d\n", kthBucketCount);
 
     //we must update K since we have reduced the problem size to elements in the kth bucket
     if(kthBucket != 0){
@@ -409,7 +410,8 @@ namespace BucketSelect{
     curandDestroyGenerator(gen);
   }
 
-  __global__ void enlargeIndexAndGetElements (float * in, float * list, int size) {
+  template <typename T>
+  __global__ void enlargeIndexAndGetElements (T * in, T * list, int size) {
     *(in + threadIdx.x) = *(list + ((int) (*(in + threadIdx.x) * size)));
   }
 
@@ -417,6 +419,8 @@ namespace BucketSelect{
   void generatePivots (T * pivots, double * slopes, T * d_list, int numElements, int numPivots, int sampleSize, T min, T max) {
 
     T * d_randoms;
+    int pivotOffset = (sampleSize / (numPivots - 1));
+
     cudaMalloc ((void **) &d_randoms, sizeof (T) * sampleSize);
   
     createRandomMatrix (d_randoms, sampleSize, 1);
@@ -433,11 +437,11 @@ namespace BucketSelect{
     cudaThreadSynchronize();
 
     for (int i = 1; i < numPivots - 1; i++) {
-      cudaMemcpy (pivots + i, d_randoms +(sampleSize / (numPivots - 1) * i), sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[i-1] = (pivots[i] - pivots[i-1]) / (sampleSize / (numPivots - 1));
+      cudaMemcpy (pivots + i, d_randoms + pivotOffset * i, sizeof (T), cudaMemcpyDeviceToHost);
+      slopes[i-1] = (pivots[i] - pivots[i-1]) / pivotOffset;
     }
     
-    slopes[numPivots-2] = (pivots[numPivots-1] - pivots[numPivots-2]) / (sampleSize / (numPivots - 1));
+    slopes[numPivots-2] = (pivots[numPivots-1] - pivots[numPivots-2]) / pivotOffset;
   
     cudaFree(d_randoms);
   }
@@ -485,7 +489,7 @@ namespace BucketSelect{
             break;
         }
         
-        bucketIndex = (midPivotIndex * (sbucketNums/numPivots-1)) + ((num - pivots[midPivotIndex]) / slopes[midPivotIndex]);
+        bucketIndex = (midPivotIndex * (sbucketNums/(numPivots-1))) + (int) ((num - pivots[midPivotIndex]) / slopes[midPivotIndex]);
         
 
         /*
@@ -521,17 +525,12 @@ namespace BucketSelect{
     // bucket counters
     int kthBucket, kthBucketCount;
     int newInputLength;
-    size_t size = length * sizeof(int);
-    int* d_elementToBucket; //array showing what bucket every element is in
-    CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
+    uint *d_bucketCount, *count; //array showing the number of elements in each bucket
+    uint kthBucketScanSize = 0;
 
     // variables for the randomized selection
     int numPivots = 9;
     int sampleSize = 1024;
-    
-    //declaring and initializing other variables
-    uint *d_bucketCount, *count; //array showing the number of elements in each bucket
-    uint kthBucketScanSize = 0;
 
     //variable to store the end result
     T kthValue = 0;
@@ -540,6 +539,7 @@ namespace BucketSelect{
     //find max and min with thrust
     T maximum, minimum;
 
+    /// ****STEP 1: Find Min and Max of the whole vector
     thrust::device_ptr<T>dev_ptr(d_vector);
     thrust::pair<thrust::device_ptr<T>, thrust::device_ptr<T> > result = thrust::minmax_element(dev_ptr, dev_ptr + length);
 
@@ -562,22 +562,25 @@ namespace BucketSelect{
     size_t totalBucketSize = numBuckets * sizeof(uint);
     CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
     uint* h_bucketCount = (uint*)malloc(totalBucketSize);
+    size_t size = length * sizeof(int);
+    int* d_elementToBucket; //array showing what bucket every element is in
+    CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
 
+    /// ****STEP 2: Generate Pivots and Slopes
     //Declare slopes and pivots
     double slopes[numPivots - 1];
     T pivots[numPivots];
     
     //Find bucket sizes using a randomized selection
     generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, minimum, maximum);
-    printf("after genpivots\n");
     
     //Allocate memories
     double * d_slopes;
     CUDA_CALL(cudaMalloc(&d_slopes, (numPivots - 1) * sizeof(double)));
-    cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice);
+    CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));
     T * d_pivots;
     CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
-    cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice);
+    CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice));
 
     CUDA_CALL(cudaMalloc(&count, sizeof(uint)));
     //Set the bucket count vector to all zeros
@@ -588,7 +591,8 @@ namespace BucketSelect{
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
     kthBucketCount = h_bucketCount[kthBucket];
  
-    printf("after assignSmartBucket\n");
+    printf("randomselect kbucket_count = %d\n", kthBucketCount);
+
     //we must update K since we have reduced the problem size to elements in the kth bucket
     if(kthBucket != 0){
       K = kthBucketCount - (kthBucketScanSize - K);
@@ -633,8 +637,6 @@ namespace BucketSelect{
       int pivotInnerindex = kthBucket - pivotOffset * pivotIndex;
       minimum = max(minimum, pivots[pivotIndex] + slopes[pivotIndex] * pivotInnerindex); 
       maximum = min(maximum, pivots[pivotIndex] + slopes[pivotIndex] * (pivotInnerindex+1));
-
-      printf("kthBucket = %d\n", kthBucket);
       
       kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
       
@@ -650,7 +652,6 @@ namespace BucketSelect{
     cudaFree(d_elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);cudaFree(d_slopes); cudaFree(d_pivots);
 
 
-    printf("end of phase1, k = %f\n", kthValue);
     return kthValue;
   }
 
@@ -674,7 +675,6 @@ namespace BucketSelect{
     else
       {
         kthValue = phaseOne(d_vector, length, K, blocks, threads);
-        printf("After Call PhaseOne in bucket, kthvalue = %f.\n", kthValue);
         return kthValue;
       }
 
@@ -700,9 +700,9 @@ namespace BucketSelect{
       }
     else
       {
-        printf("Call PhaseOneR in parent function.\n");
+        //printf("Call PhaseOneR in parent function.\n");
         kthValue = phaseOneR(d_vector, length, K, blocks, threads);
-        printf("After Call PhaseOneR in parent function, kthvalue = %f.\n", kthValue);
+        // printf("After Call PhaseOneR in parent function, kthvalue = %f.\n", kthValue);
         return kthValue;
       }
 
