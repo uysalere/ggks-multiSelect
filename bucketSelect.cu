@@ -390,7 +390,7 @@ namespace BucketSelect{
       maximum = min(maximum, minimum + 1/slope);
       kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
     }
-
+    
 
     //free all used memory
     cudaFree(elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);
@@ -404,9 +404,9 @@ namespace BucketSelect{
   /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
 
 
-__host__ __device__
-unsigned int hash(unsigned int a)
-{
+  __host__ __device__
+  unsigned int hash(unsigned int a)
+  {
     a = (a+0x7ed55d16) + (a<<12);
     a = (a^0xc761c23c) ^ (a>>19);
     a = (a+0x165667b1) + (a<<5);
@@ -414,78 +414,83 @@ unsigned int hash(unsigned int a)
     a = (a+0xfd7046c5) + (a<<3);
     a = (a^0xb55a4f09) ^ (a>>16);
     return a;
-}
-
-struct RandomNumberFunctor :
-  public thrust::unary_function<unsigned int, float>
-{
-  unsigned int mainSeed;
-
-  RandomNumberFunctor(unsigned int _mainSeed) : 
-    mainSeed(_mainSeed) {}
-  
-  __host__ __device__
-  float operator()(unsigned int threadIdx)
-  {
-    unsigned int seed = hash(threadIdx) * mainSeed;
-
-    thrust::default_random_engine rng(seed);
-    rng.discard(threadIdx);        
-    thrust::uniform_real_distribution<float> u(0,1);
-
-    return u(rng);
   }
-};
 
-  template <typename T>
-  void createRandomVector(T * d_vec, int size) {
+  struct RandomNumberFunctor :
+    public thrust::binary_function<unsigned int, int, double>
+  {
+    unsigned int mainSeed;
+    unsigned int sizeOfVector;
+
+    RandomNumberFunctor(unsigned int _mainSeed, int _sizeOfVector) : 
+      mainSeed(_mainSeed), sizeOfVector(_sizeOfVector){}
+  
+    __host__ __device__
+    float operator()(unsigned int threadIdx)
+    {
+      unsigned int seed = hash(threadIdx) * mainSeed;
+
+      thrust::default_random_engine rng(seed);
+      rng.discard(threadIdx);        
+      thrust::uniform_real_distribution<double> u(0, sizeOfVector);
+
+      return u(rng);
+    }
+  };
+
+  void createRandomVector(double * d_vec, int sizeOfSample, int sizeOfVector) {
     timeval t1;
     uint seed;
 
     gettimeofday(&t1, NULL);
     seed = t1.tv_usec * t1.tv_sec;
   
-    thrust::device_ptr<T> d_ptr(d_vec);
-    thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(size),
-                      d_ptr, RandomNumberFunctor(seed));
+    thrust::device_ptr<double> d_ptr(d_vec);
+    thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(sizeOfSample),
+                      d_ptr, RandomNumberFunctor(seed, sizeOfVector));
   }
 
   template <typename T>
-  __global__ void enlargeIndexAndGetElements (T * in, T * list, int size) {
-    *(in + threadIdx.x) = *(list + ((int) (*(in + threadIdx.x) * size)));
+  __global__ void getElements (double * in, T * list, int size) {
+    *(in + blockIdx.x*blockDim.x + threadIdx.x) = (double) *(list + (int) *(in + blockIdx.x*blockDim.x + threadIdx.x));
   }
 
-  template <typename T>
-  void generatePivots (T * pivots, double * slopes, T * d_list, int numElements, int numPivots, int sampleSize, T min, T max) {
+ template <typename T>
+  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, T min, T max) {
 
-    T * d_randoms;
-    int pivotOffset = (sampleSize / (numPivots - 1));
+    int maxThreads = 1024;
 
-    cudaMalloc ((void **) &d_randoms, sizeof (T) * sampleSize);
+    double * d_randoms;
+    cudaMalloc ((void **) &d_randoms, sizeof (double) * sizeOfSample);
+
+    int numSmallBuckets = (sizeOfSample / (numPivots - 1));
   
-    createRandomVector (d_randoms, sampleSize);
+    createRandomVector(d_randoms, sizeOfSample, sizeOfVector);
 
     // converts randoms floats into elements from necessary indices
-    enlargeIndexAndGetElements<<<1, sampleSize>>>(d_randoms, d_list, numElements);
+    getElements<<<(sizeOfSample/maxThreads), maxThreads>>>(d_randoms, d_list, sizeOfVector);
 
-    pivots[0] = min; 
-    pivots[numPivots-1] = max;
+    pivots[0] = (T) min; 
+    pivots[numPivots-1] = (T) max;
 
-    thrust::device_ptr<T>randoms_ptr(d_randoms);
-    thrust::sort(randoms_ptr, randoms_ptr + sampleSize);
+    thrust::device_ptr<double>randoms_ptr(d_randoms);
+    thrust::sort(randoms_ptr, randoms_ptr + sizeOfSample);
 
     cudaThreadSynchronize();
 
-    for (int i = 1; i < numPivots - 1; i++) {
-      cudaMemcpy (pivots + i, d_randoms + pivotOffset * i, sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[i-1] = pivotOffset /(pivots[i] - pivots[i-1]);
+    double holder;
+
+    for (int i = 1; i < numPivots - 1; i++) {    
+      cudaMemcpy (&holder, (d_randoms + numSmallBuckets * i), sizeof (double), cudaMemcpyDeviceToHost);     
+      *(pivots + i) = (T) holder;
+      slopes[i-1] = numSmallBuckets /(pivots[i] - pivots[i-1]);
     }
     
-    slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
-  
+    slopes[numPivots-2] = numSmallBuckets / (pivots[numPivots-1] - pivots[numPivots-2]);
+
     cudaFree(d_randoms);
   }
-  
+
  //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
   template <typename T>
   __global__ void assignSmartBucket(T * d_vector, int length, int bucketNumbers, double * slopes, T * pivots, int numPivots, int* bucket, uint* bucketCount, int offset){
@@ -541,7 +546,7 @@ struct RandomNumberFunctor :
           }
         */
         bucket[i] = bucketIndex;
-        atomicInc(&sharedBuckets[bucketIndex], length);
+        atomicInc(sharedBuckets + bucketIndex, length);
       }
     }
 
@@ -549,7 +554,7 @@ struct RandomNumberFunctor :
 
     //reading bucket counts from shared memory back to global memory
     if(index < bucketNumbers){
-      atomicAdd(&bucketCount[index], sharedBuckets[index]);
+      atomicAdd(bucketCount + index, sharedBuckets[index]);
     }
   }
 
