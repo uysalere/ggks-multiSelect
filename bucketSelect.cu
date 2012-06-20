@@ -24,6 +24,7 @@ namespace BucketSelect{
 
 #define MAX_THREADS_PER_BLOCK 1024
 #define CUTOFF_POINT 200000 
+#define NUM_PIVOTS 9
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {      \
       printf("Error at %s:%d\n",__FILE__,__LINE__);     \
@@ -402,8 +403,7 @@ namespace BucketSelect{
   /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
   /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
   /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
-
-
+ 
   __host__ __device__
   unsigned int hash(unsigned int a)
   {
@@ -417,13 +417,12 @@ namespace BucketSelect{
   }
 
   struct RandomNumberFunctor :
-    public thrust::binary_function<unsigned int, int, double>
+    public thrust::unary_function<unsigned int, float>
   {
     unsigned int mainSeed;
-    unsigned int sizeOfVector;
 
-    RandomNumberFunctor(unsigned int _mainSeed, int _sizeOfVector) : 
-      mainSeed(_mainSeed), sizeOfVector(_sizeOfVector){}
+    RandomNumberFunctor(unsigned int _mainSeed) :
+      mainSeed(_mainSeed) {}
   
     __host__ __device__
     float operator()(unsigned int threadIdx)
@@ -431,92 +430,146 @@ namespace BucketSelect{
       unsigned int seed = hash(threadIdx) * mainSeed;
 
       thrust::default_random_engine rng(seed);
-      rng.discard(threadIdx);        
-      thrust::uniform_real_distribution<double> u(0, sizeOfVector);
+      rng.discard(threadIdx);
+      thrust::uniform_real_distribution<float> u(0,1);
 
       return u(rng);
     }
   };
 
-  void createRandomVector(double * d_vec, int sizeOfSample, int sizeOfVector) {
+  template <typename T>
+  void createRandomVector(T * d_vec, int size) {
     timeval t1;
     uint seed;
 
     gettimeofday(&t1, NULL);
     seed = t1.tv_usec * t1.tv_sec;
   
-    thrust::device_ptr<double> d_ptr(d_vec);
-    thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(sizeOfSample),
-                      d_ptr, RandomNumberFunctor(seed, sizeOfVector));
+    thrust::device_ptr<T> d_ptr(d_vec);
+    thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(size),
+                      d_ptr, RandomNumberFunctor(seed));
   }
 
   template <typename T>
-  __global__ void getElements (double * in, T * list, int size) {
-    *(in + blockIdx.x*blockDim.x + threadIdx.x) = (double) *(list + (int) *(in + blockIdx.x*blockDim.x + threadIdx.x));
+  __global__ void enlargeIndexAndGetElements (T * in, T * list, int size) {
+    *(in + blockIdx.x*blockDim.x + threadIdx.x) = *(list + ((int) (*(in + blockIdx.x * blockDim.x + threadIdx.x) * size)));
   }
 
- template <typename T>
-  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, T min, T max) {
 
-    int maxThreads = 1024;
+  __global__ void enlargeIndexAndGetElements (float * in, uint * out, uint * list, int size) {
+    *(out + blockIdx.x * blockDim.x + threadIdx.x) = (uint) *(list + ((int) (*(in + blockIdx.x * blockDim.x + threadIdx.x) * size)));
+  }
 
-    double * d_randoms;
-    cudaMalloc ((void **) &d_randoms, sizeof (double) * sizeOfSample);
-
-    int numSmallBuckets = (sizeOfSample / (numPivots - 1));
+  template <typename T>
+  void generatePivots (uint * pivots, double * slopes, uint * d_list, int sizeOfVector, int numPivots, int sizeOfSample, uint min, uint max) {
   
-    createRandomVector(d_randoms, sizeOfSample, sizeOfVector);
+    int maxThreads = 1024;
+    float * d_randomFloats;
+    uint * d_randomInts;
+  
+    int pivotOffset = (sizeOfSample / (numPivots - 1));
+
+    cudaMalloc ((void **) &d_randomFloats, sizeof (float) * sizeOfSample);
+  
+    d_randomInts = (uint *) d_randomFloats;
+
+    createRandomVector (d_randomFloats, sizeOfSample);
 
     // converts randoms floats into elements from necessary indices
-    getElements<<<(sizeOfSample/maxThreads), maxThreads>>>(d_randoms, d_list, sizeOfVector);
+    enlargeIndexAndGetElements<<<(sizeOfSample/maxThreads), maxThreads>>>(d_randomFloats, d_randomInts, d_list, sizeOfVector);
 
-    pivots[0] = (T) min; 
-    pivots[numPivots-1] = (T) max;
 
-    thrust::device_ptr<double>randoms_ptr(d_randoms);
+    pivots[0] = min;
+    pivots[numPivots-1] = max;
+
+    thrust::device_ptr<T>randoms_ptr(d_randomInts);
     thrust::sort(randoms_ptr, randoms_ptr + sizeOfSample);
 
     cudaThreadSynchronize();
 
-    double holder;
-
-    for (int i = 1; i < numPivots - 1; i++) {    
-      cudaMemcpy (&holder, (d_randoms + numSmallBuckets * i), sizeof (double), cudaMemcpyDeviceToHost);     
-      *(pivots + i) = (T) holder;
-      slopes[i-1] = numSmallBuckets /(pivots[i] - pivots[i-1]);
+    for (int i = 1; i < numPivots - 1; i++) {
+      cudaMemcpy (pivots + i, d_randomInts + pivotOffset * i, sizeof (uint), cudaMemcpyDeviceToHost);
+      slopes[i-1] = pivotOffset /(pivots[i] - pivots[i-1]);
     }
     
-    slopes[numPivots-2] = numSmallBuckets / (pivots[numPivots-1] - pivots[numPivots-2]);
+    slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
+  
+    cudaFree(d_randomInts);
+  }
 
+  template <typename T>
+  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, T min, T max) {
+
+    int maxThreads = 1024;
+    T * d_randoms;
+    int pivotOffset = (sizeOfSample / (numPivots - 1));
+
+    cudaMalloc ((void **) &d_randoms, sizeof (T) * sizeOfSample);
+  
+    createRandomVector (d_randoms, sizeOfSample);
+
+    // converts randoms floats into elements from necessary indices
+    enlargeIndexAndGetElements<<<(sizeOfSample/maxThreads), maxThreads>>>(d_randoms, d_list, sizeOfVector);
+
+    pivots[0] = min;
+    pivots[numPivots-1] = max;
+
+    thrust::device_ptr<T>randoms_ptr(d_randoms);
+    thrust::sort(randoms_ptr, randoms_ptr + sizeOfSample);
+
+    cudaThreadSynchronize();
+
+    for (int i = 1; i < numPivots - 1; i++) {
+      cudaMemcpy (pivots + i, d_randoms + pivotOffset * i, sizeof (T), cudaMemcpyDeviceToHost);
+      slopes[i-1] = pivotOffset /(pivots[i] - pivots[i-1]);
+    }
+    
+    slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
+  
     cudaFree(d_randoms);
   }
 
- //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
+  //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
   template <typename T>
-  __global__ void assignSmartBucket(T * d_vector, int length, int bucketNumbers, double * slopes, T * pivots, int numPivots, int* bucket, uint* bucketCount, int offset){
+  __global__ void assignSmartBucket(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, int* elementToBucket, uint* bucketCount, int offset){
   
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int index = blockDim.x * blockIdx.x + threadIdx.x;
     int bucketIndex;
-    extern __shared__ uint sharedBuckets[];
-    int index = threadIdx.x;  
- 
+    int threadIndex = threadIdx.x;  
+
     //variables in shared memory for fast access
-    __shared__ int sbucketNums;
-    // __shared__ double sMin;
-    sbucketNums = bucketNumbers;
-    //sMin = pivots[numPivots - 1];
+    __shared__ int sharedNumSmallBuckets;
+    sharedNumSmallBuckets = numBuckets / (numPivots-1);
+
+    extern __shared__ uint sharedBuckets[];
+    __shared__ double sharedSlopes[NUM_PIVOTS-1];
+    __shared__ T sharedPivots[NUM_PIVOTS];
+
+    /*
+    //Using one dynamic shared memory for all
+    if(threadIndex == 0) {
+      //__device__ void func() {
+      sharedBuckets = (uint *)array;
+      sharedSlopes = (double *) (sharedBuckets + numBuckets);
+      sharedPivots = (T *) (sharedSlopes + numPivots-1);
+      }*/
 
     //reading bucket counts into shared memory where increments will be performed
-    if(index < bucketNumbers){
-      sharedBuckets[index] = 0;
+    if(threadIndex < numBuckets) {
+      sharedBuckets[threadIndex] = 0;
+      if(threadIndex < numPivots) {
+        sharedPivots[threadIndex] = pivots[threadIndex];
+        if(threadIndex < (numPivots-1))
+          sharedSlopes[threadIndex] = slopes[threadIndex];
+          }
     }
     syncthreads();
 
     //assigning elements to buckets and incrementing the bucket counts
-    if(idx < length)    {
+    if(index < length)    {
       int i;
 
-      for(i = idx; i < length; i += offset){
+      for(i = index; i < length; i += offset){
         T num = d_vector[i];
         int minPivotIndex = 0;
         int maxPivotIndex = numPivots-1;
@@ -526,26 +579,16 @@ namespace BucketSelect{
         while (maxPivotIndex >= minPivotIndex) {
           midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
 
-          if (pivots[midPivotIndex+1] <= num)
+          if (sharedPivots[midPivotIndex+1] <= num)
             minPivotIndex = midPivotIndex+1;
-          else if (pivots[midPivotIndex] > num)
+          else if (sharedPivots[midPivotIndex] > num)
             maxPivotIndex = midPivotIndex;
           else
             break;
         }
         
-        bucketIndex = (midPivotIndex * (sbucketNums/(numPivots-1))) + (int) ((num - pivots[midPivotIndex]) * slopes[midPivotIndex]);
-        
-
-        /*
-        //calculate the bucketIndex for each element
-        bucketIndex =  (d_vector[i] - sMin) * slope;
-        //if it goes beyond the number of buckets, put it in the last bucket
-        if(bucketIndex >= sbucketNums){
-          bucketIndex = sbucketNums - 1;
-          }
-        */
-        bucket[i] = bucketIndex;
+        bucketIndex = (midPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[midPivotIndex]) * sharedSlopes[midPivotIndex]);
+        elementToBucket[i] = bucketIndex;
         atomicInc(sharedBuckets + bucketIndex, length);
       }
     }
@@ -553,8 +596,8 @@ namespace BucketSelect{
     syncthreads();
 
     //reading bucket counts from shared memory back to global memory
-    if(index < bucketNumbers){
-      atomicAdd(bucketCount + index, sharedBuckets[index]);
+    if(threadIndex < numBuckets){
+      atomicAdd(bucketCount + threadIndex, sharedBuckets[threadIndex]);
     }
   }
 
@@ -574,8 +617,8 @@ namespace BucketSelect{
     uint kthBucketScanSize = 0;
 
     // variables for the randomized selection
-    int numPivots = 9;
-    int sampleSize = 1024;
+    int numPivots = NUM_PIVOTS;
+    int sampleSize = MAX_THREADS_PER_BLOCK;
 
     //variable to store the end result
     T kthValue = 0;
@@ -633,6 +676,7 @@ namespace BucketSelect{
 
     //Distribute elements into their respective buckets
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
+    //assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint) + (numPivots-1)*sizeof(double) + (numPivots)*sizeof(T)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
     kthBucketCount = h_bucketCount[kthBucket];
  
