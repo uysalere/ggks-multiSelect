@@ -724,8 +724,8 @@ namespace BucketSelect{
       int pivotOffset = numBuckets / (numPivots - 1);
       int pivotIndex = kthBucket/pivotOffset;
       int pivotInnerindex = kthBucket - pivotOffset * pivotIndex;
-      minimum = max(minimum, pivots[pivotIndex] + pivotInnerindex / slopes[pivotIndex]); 
-      maximum = min(maximum, pivots[pivotIndex] + (pivotInnerindex+1) / slopes[pivotIndex]);
+      minimum = max(minimum, (T) (pivots[pivotIndex] + pivotInnerindex / slopes[pivotIndex])); 
+      maximum = min(maximum, (T) (pivots[pivotIndex] + (pivotInnerindex+1) / slopes[pivotIndex]));
       
       kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
       
