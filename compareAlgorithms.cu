@@ -68,7 +68,12 @@ void compareAlgorithms(uint size, uint k, uint numTests,uint *algorithmsToTest, 
   typedef results_t<T>* (*ptrToTimingFunction)(T*, uint, uint);
   typedef void (*ptrToGeneratingFunction)(T*, uint, curandGenerator_t);
   //these are the functions that can be called
-  ptrToTimingFunction arrayOfTimingFunctions[NUMBEROFALGORITHMS] = {&timeSortAndChoose<T>,&timeRadixSelect<T>, &timeBucketSelect<T>, &timeRandomizedBucketSelect<T>, &timeCuttingPlane<T>, &timeRandomizedSelect<T>};
+  ptrToTimingFunction arrayOfTimingFunctions[NUMBEROFALGORITHMS] = {&timeSortAndChoose<T>,
+                                                                    &timeRadixSelect<T>,
+                                                                    &timeBucketSelect<T>,
+                                                                    &timeRandomizedBucketSelect<T>,
+                                                                    // &timeCuttingPlane<T>,
+                                                                    &timeRandomizedSelect<T>};
   
   ptrToGeneratingFunction *arrayOfGenerators;
   char** namesOfGeneratingFunctions;
@@ -259,10 +264,10 @@ int main(int argc, char** argv)
     runTests<float>(distributionType,fileName,startPower,stopPower,testCount);
     break;
   case 2:
-    // runTests<double>(distributionType,fileName,startPower,stopPower,testCount);
+    runTests<double>(distributionType,fileName,startPower,stopPower,testCount);
     break;
   case 3:
-    // runTests<uint>(distributionType,fileName,startPower,stopPower,testCount);
+    runTests<uint>(distributionType,fileName,startPower,stopPower,testCount);
     break;
   default:
     printf("You entered and invalid option, now exiting\n");
