@@ -489,10 +489,10 @@ namespace BucketSelect{
 
     for (int i = 1; i < numPivots - 1; i++) {
       cudaMemcpy (pivots + i, d_randomInts + pivotOffset * i, sizeof (uint), cudaMemcpyDeviceToHost);
-      slopes[i-1] = pivotOffset /(pivots[i] - pivots[i-1]);
+      slopes[i-1] = pivotOffset / (double) (pivots[i] - pivots[i-1]);
     }
     
-    slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
+    slopes[numPivots-2] = pivotOffset / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
     cudaFree(d_randomInts);
   }
