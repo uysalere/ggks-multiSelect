@@ -135,18 +135,16 @@ namespace BucketSelect{
 
   //copy elements in the kth bucket to a new array
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, int* elementArray, int bucket, T* newArray, uint* count, int offset){
+  __global__ void copyElement(T* d_vector, int length, int* elementToBucket, int bucket, T* newArray, uint* count, int offset){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if(idx < length){
-      int i;
-      for(i=idx; i<length; i+=offset){
+      for(int i=idx; i<length; i+=offset)
         //copy elements in the kth bucket to the new array
-        if(elementArray[i] == bucket){
-          newArray[atomicInc(&count[0],length)] = d_vector[i];
-        }
-      }
+        if(elementToBucket[i] == bucket)
+          newArray[atomicInc(count, length)] = d_vector[i];
     }
+
   }
 
   //this function finds the bin containing the kth element we are looking for (works on the host)
@@ -168,6 +166,28 @@ namespace BucketSelect{
     return Kbucket;
   }
 
+  //this function finds the bin containing the kth element we are looking for (works on the host)
+  inline int FindSmartKBucket(uint *d_counter, uint *h_counter, const int num_buckets,  int k, uint * sum){
+    cudaMemcpy(sum, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
+    int Kbucket = 0;
+    int warp_size = 32;
+
+
+    if (*sum<k){
+      while ( (*sum<k) & (Kbucket<num_buckets-1)) {
+        Kbucket++; 
+        if (!((Kbucket-1)%32))
+          cudaMemcpy(h_counter + Kbucket, d_counter + Kbucket, warp_size * sizeof(uint), cudaMemcpyDeviceToHost);
+        *sum += h_counter[Kbucket];
+      }
+    }
+    else{
+      cudaMemcpy(h_counter, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
+    }
+  
+    return Kbucket;
+  }
+
   template <typename T>
   __global__ void GetKvalue(T* d_vector, int * d_bucket, const int Kbucket, const int n, T* Kvalue, int offset )
   {
@@ -176,9 +196,8 @@ namespace BucketSelect{
     if (xIndex < n) {
       int i;
       for(i=xIndex; i<n; i+=offset){
-        if ( d_bucket[i] == Kbucket ) {
+        if ( d_bucket[i] == Kbucket ) 
           Kvalue[0] = d_vector[i];
-        }
       }
     }
   }
@@ -589,6 +608,7 @@ namespace BucketSelect{
         
         bucketIndex = (midPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[midPivotIndex]) * sharedSlopes[midPivotIndex]);
         elementToBucket[i] = bucketIndex;
+        // hashmap implementation set[bucketindex]=add.i;
         atomicInc(sharedBuckets + bucketIndex, length);
       }
     }
@@ -596,9 +616,8 @@ namespace BucketSelect{
     syncthreads();
 
     //reading bucket counts from shared memory back to global memory
-    if(threadIndex < numBuckets){
+    if(threadIndex < numBuckets)
       atomicAdd(bucketCount + threadIndex, sharedBuckets[threadIndex]);
-    }
   }
 
   /* this function finds the kth-largest element from the input array */
@@ -620,7 +639,7 @@ namespace BucketSelect{
     uint *count; 
     uint kthBucketScanner = 0;
 
-    //variable to store the end result
+    // variable to store the end result
     T kthValue = 0;
     int newInputLength;
     T* newInput;
@@ -677,7 +696,8 @@ namespace BucketSelect{
 
     //Distribute elements into their respective buckets
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
-    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanner);
+    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &kthBucketScanner);
+    // kthBucket = FindSmartKBucket(d_bucketCount, h_bucketCount, numBuckets, K, length, &kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
  
     printf("randomselect kbucket_count = %d\n", kthBucketCount);
