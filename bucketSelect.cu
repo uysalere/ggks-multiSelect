@@ -154,11 +154,11 @@ namespace BucketSelect{
     cudaMemcpy(sum, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
     int Kbucket = 0;
     
-    if (sum[0]<k){
+    if (*sum<k){
       cudaMemcpy(h_counter, d_counter, num_buckets * sizeof(uint), cudaMemcpyDeviceToHost);
-      while ( (sum[0]<k) & (Kbucket<num_buckets-1)){
+      while ( (*sum<k) & (Kbucket<num_buckets-1)){
         Kbucket++; 
-        sum[0] = sum[0] + h_counter[Kbucket];
+        *sum = *sum + h_counter[Kbucket];
       }
     }
     else{
@@ -295,7 +295,7 @@ namespace BucketSelect{
     //declaring and initializing other variables
 
     uint *d_bucketCount, *count; //array showing the number of elements in each bucket
-    uint kthBucketScanSize = 0;
+    uint kthBucketScanner = 0;
 
     size_t size = length * sizeof(int);
 
@@ -344,14 +344,14 @@ namespace BucketSelect{
     //Distribute elements into their respective buckets
     assignBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, slope, minimum, elementToBucket, d_bucketCount, offset);
     
-    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
+    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
  
     printf("original kthBucketCount = %d\n", kthBucketCount);
 
     //we must update K since we have reduced the problem size to elements in the kth bucket
     if(kthBucket != 0){
-      K = kthBucketCount - (kthBucketScanSize - K);
+      K = kthBucketCount - (kthBucketScanner - K);
     }
 
     //copy elements in the kth bucket to a new array
@@ -521,10 +521,10 @@ namespace BucketSelect{
 
     for (int i = 1; i < numPivots - 1; i++) {
       cudaMemcpy (pivots + i, d_randoms + pivotOffset * i, sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[i-1] = pivotOffset /(pivots[i] - pivots[i-1]);
+      slopes[i-1] = pivotOffset / (double) (pivots[i] - pivots[i-1]);
     }
     
-    slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
+    slopes[numPivots-2] = pivotOffset / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
     cudaFree(d_randoms);
   }
@@ -575,7 +575,7 @@ namespace BucketSelect{
         int maxPivotIndex = numPivots-1;
         int midPivotIndex;
 
-        // find the index of the pivot that is the greatest s.t. lower than or equal to num
+        // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
         while (maxPivotIndex >= minPivotIndex) {
           midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
 
@@ -610,18 +610,19 @@ namespace BucketSelect{
     int numBuckets = 1024;
     int offset = blocks * threads;
 
-    // bucket counters
-    int kthBucket, kthBucketCount;
-    int newInputLength;
-    uint *d_bucketCount, *count; //array showing the number of elements in each bucket
-    uint kthBucketScanSize = 0;
-
     // variables for the randomized selection
     int numPivots = NUM_PIVOTS;
     int sampleSize = MAX_THREADS_PER_BLOCK;
 
+    // bucket counters
+    int kthBucket, kthBucketCount;
+    uint *d_bucketCount; //array showing the number of elements in each bucket
+    uint *count; 
+    uint kthBucketScanner = 0;
+
     //variable to store the end result
     T kthValue = 0;
+    int newInputLength;
     T* newInput;
 
     //find max and min with thrust
@@ -676,15 +677,14 @@ namespace BucketSelect{
 
     //Distribute elements into their respective buckets
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
-    //assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint) + (numPivots-1)*sizeof(double) + (numPivots)*sizeof(T)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
-    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanSize);
+    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
  
     printf("randomselect kbucket_count = %d\n", kthBucketCount);
 
     //we must update K since we have reduced the problem size to elements in the kth bucket
     if(kthBucket != 0){
-      K = kthBucketCount - (kthBucketScanSize - K);
+      K = kthBucketCount - (kthBucketScanner - K);
     }
 
     //copy elements in the kth bucket to a new array
@@ -703,7 +703,7 @@ namespace BucketSelect{
       kthValue = new_ptr[0];
       
       //free all used memory
-      cudaFree(d_elementToBucket); cudaFree(d_bucketCount); cudaFree(count); cudaFree(newInput); cudaFree(d_slopes); cudaFree(d_pivots);
+      cudaFree(d_elementToBucket); cudaFree(d_bucketCount); cudaFree(count); cudaFree(newInput); cudaFree(d_slopes); cudaFree(d_pivots); free(h_bucketCount);
       return kthValue;
     }
  
@@ -738,7 +738,7 @@ namespace BucketSelect{
 
 
     //free all used memory
-    cudaFree(d_elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);cudaFree(d_slopes); cudaFree(d_pivots);
+    cudaFree(d_elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);cudaFree(d_slopes); cudaFree(d_pivots);free(h_bucketCount);
 
 
     return kthValue;
