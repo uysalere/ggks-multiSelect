@@ -17,9 +17,6 @@
 #include <curand.h>
 
 
-
-
-
 ///////////////////////////////////////////////////////////////////
 ////           FUNCTIONS TO GENERATE UINTS
 ///////////////////////////////////////////////////////////////////
@@ -206,6 +203,44 @@ __global__ void vectorAdd(float* first, float* second, int length, int offset){
   }
 }
 
+//divide first by second and store it in first
+__global__ void CauchyTransformFloat(float* vec, int length, int offset) {
+  int idx = blockDim.x * blockIdx.x + threadIdx.x;
+  if(idx < length){
+    int i;
+
+    for(i=idx; i<length; i+=offset){
+      if(vec[i] == 1)
+        vec[i] = 0.9999;
+      if(vec[i] == 0)
+        vec[i] = 0.0001;
+      
+      vec[i] = tanf(CUDART_PI_F*(vec[i] - 0.5));
+    }
+  }
+}
+
+void generateCauchyFloats(float* input, uint length, curandGenerator_t gen){
+  float* devInput;
+
+  cudaMalloc(&devInput, sizeof(float)*length);
+
+  //get device properties
+  cudaDeviceProp deviceProp;
+  cudaGetDeviceProperties(&deviceProp, 0);
+  int blocks = deviceProp.multiProcessorCount;
+  int maxThreads = deviceProp.maxThreadsPerBlock;
+  int offset = blocks * maxThreads;
+
+  curandGenerateUniform(gen, devInput, length);
+
+  CauchyTransformFloat<<<blocks, maxThreads>>>(devInput, length, offset);
+
+  cudaMemcpy(input, devInput, sizeof(float)*length, cudaMemcpyDeviceToHost);
+
+  cudaFree(devInput);
+}
+
 void generateNoisyVector(float* input, uint length, curandGenerator_t gen){
   float* devInput;
   cudaMalloc(&devInput, sizeof(float)*length);
@@ -326,14 +361,14 @@ void generateBucketKillerFloats(float *h_vec, uint numElements, curandGenerator_
   cudaFree(d_generated);
 }
 
-#define NUMBEROFFLOATDISTRIBUTIONS 9
+#define NUMBEROFFLOATDISTRIBUTIONS 10
 ptrToFloatGeneratingFunction arrayOfFloatGenerators[NUMBEROFFLOATDISTRIBUTIONS] = {&generateUniformFloats, &generateNormalFloats,&generateBucketKillerFloats,
                                                                                    &generateHalfNormalFloats,&generateNormalFloats100, &generateHugeUniformFloats,
-                                                                                   &generateNoisyVector,&generateAllOnesFloats,&generateOnesTwosFloats};
+                                                                                   &generateNoisyVector,&generateAllOnesFloats,&generateOnesTwosFloats, &generateCauchyFloats};
 
 char* namesOfFloatGeneratingFunctions[NUMBEROFFLOATDISTRIBUTIONS]={"UNIFORM FLOATS","NORMAL FLOATS","KILLER FLOATS",
                                                                    "HALF NORMAL FLOATS","NORMAL FLOATS 100", "HUGE UNIFORM FLOATS",
-                                                                   "NOISY FLOATS","ALL ONES FLOATS","ONES TWOS FLOAT"};
+                                                                   "NOISY FLOATS","ALL ONES FLOATS","ONES TWOS FLOAT", "CAUCHY FLOAT"};
 
 
 ///////////////////////////////////////////////////////////////////
