@@ -25,28 +25,30 @@ unsigned int hash(unsigned int a)
   a = (a^0xb55a4f09) ^ (a>>16);
   return a;
 }
+
+
 /*
-  struct RandomNumberFunctor :
+struct RandomNumberFunctor :
   public thrust::binary_function<unsigned int, int, double>
-  {
+{
   unsigned int mainSeed;
   unsigned int sizeOfVector;
 
-  RandomNumberFunctor(unsigned int _mainSeed, int _sizeOfVector) : 
-  mainSeed(_mainSeed), sizeOfVector(_sizeOfVector){}
+  RandomNumberFunctor(unsigned int _mainSeed, int _sizeOfVector) :
+    mainSeed(_mainSeed), sizeOfVector(_sizeOfVector){}
   
   __host__ __device__
   float operator()(unsigned int threadIdx)
   {
-  unsigned int seed = hash(threadIdx) * mainSeed;
+    unsigned int seed = hash(threadIdx) * mainSeed;
 
-  thrust::default_random_engine rng(seed);
-  rng.discard(threadIdx);        
-  thrust::uniform_real_distribution<double> u(0, sizeOfVector);
+    thrust::default_random_engine rng(seed);
+    rng.discard(threadIdx);
+    thrust::uniform_real_distribution<double> u(0, sizeOfVector);
 
-  return u(rng);
+    return u(rng);
   }
-  };
+};
 */
 
 struct RandomNumberFunctor :
@@ -72,19 +74,6 @@ struct RandomNumberFunctor :
 
 
 ///**** MonteCarlo.cu ****
-/*
-  void createRandomVectorThrust(double * d_vec, int sizeOfSample, int sizeOfVector) {
-  timeval t1;
-  uint seed;
-
-  gettimeofday(&t1, NULL);
-  seed = t1.tv_usec * t1.tv_sec;
-  
-  thrust::device_ptr<double> d_ptr(d_vec);
-  thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(sizeOfSample),
-  d_ptr, RandomNumberFunctor(seed, sizeOfVector));
-  }
-*/
 template <typename T>
 void createRandomVector(T * d_vec, int size) {
   timeval t1;
@@ -97,7 +86,6 @@ void createRandomVector(T * d_vec, int size) {
   thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(size),
                     d_ptr, RandomNumberFunctor(seed));
 }
-
 
 template <typename T>
 void createRandomVectorCurand(T * d_A, int size) {
@@ -115,17 +103,6 @@ void createRandomVectorCurand(T * d_A, int size) {
 
   curandDestroyGenerator(gen);
 }
-
-/*
-  template <typename T>
-  __global__ void getElements (double * in, T * list, int size) {
-  // *(in + blockIdx.x*numThreads + threadIdx.x) = *(list + ((int) (*(in + blockIdx.x*numThreads + threadIdx.x) * size)));
-  // printf("%lf\n", *(in + blockIdx.x*blockDim.x + threadIdx.x));
-
-  *(in + blockIdx.x*blockDim.x + threadIdx.x) = (double) *(list + (int) *(in + blockIdx.x*blockDim.x + threadIdx.x));
-  //  printf("%lf\n", *(in + blockIdx.x*blockDim.x + threadIdx.x));
-  }
-*/
 
 template <typename T>
 __global__ void enlargeIndexAndGetElements (T * in, T * list, int size) {
@@ -150,8 +127,8 @@ void printStuff (T * d_list, int size) {
   
   free(p);
 }
-
 /*
+
   template <typename T>
   void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, T min, T max) {
 
@@ -188,7 +165,6 @@ void printStuff (T * d_list, int size) {
   cudaFree(d_randoms);
   }
 */
-
 template <typename T>
 void generatePivots (uint * pivots, double * slopes, uint * d_list, int sizeOfVector, int numPivots, int sizeOfSample, uint min, uint max) {
   
@@ -224,7 +200,6 @@ void generatePivots (uint * pivots, double * slopes, uint * d_list, int sizeOfVe
   slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
   
   cudaFree(d_randomInts);
-  return;
 }
 
 template <typename T>
@@ -249,23 +224,91 @@ void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, 
 
   cudaThreadSynchronize();
 
-  for (int i = 1; i < numPivots - 1; i++) {
+  // TODO:  check to make sure pivots aren't repeated, since that crashes our program currently
+  //  note:  need to implement everything in both generatePivots functions
+
+  // set pivots next to the min and max pivots
+  cudaMemcpy (pivots + 1, d_randoms + 1, sizeof (T), cudaMemcpyDeviceToHost);
+  cudaMemcpy (pivots + numPivots - 2, d_randoms + sizeOfSample - 2, sizeof (T), cudaMemcpyDeviceToHost);
+  slopes[0] = pivotOffset / (double) (pivots[1] - pivots[0]);
+
+  for (int i = 2; i < numPivots - 2; i++) {
     cudaMemcpy (pivots + i, d_randoms + pivotOffset * i, sizeof (T), cudaMemcpyDeviceToHost);
-    slopes[i-1] = pivotOffset /(pivots[i] - pivots[i-1]);
+
   }
-    
+
+
+
+
+  for (int i = 1; i < numPivots - 1; i++) {
+
+    slopes[i-1] = pivotOffset / (pivots[i] - pivots[i-1]);
+  }
+
+  slopes[numPivots-3] = pivotOffset / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
   slopes[numPivots-2] = pivotOffset / (pivots[numPivots-1] - pivots[numPivots-2]);
   
   cudaFree(d_randoms);
 }
 
 
+
+/***** GENERALIZED VERSION *****/
+
+/*
+template <typename T>
+__global__ void getElements (double * in, T * list, int size) {
+  // *(in + blockIdx.x*numThreads + threadIdx.x) = *(list + ((int) (*(in + blockIdx.x*numThreads + threadIdx.x) * size)));
+  // printf("%lf\n", *(in + blockIdx.x*blockDim.x + threadIdx.x));
+
+  *(in + blockIdx.x*blockDim.x + threadIdx.x) = (double) *(list + (int) *(in + blockIdx.x*blockDim.x + threadIdx.x));
+  // printf("%lf\n", *(in + blockIdx.x*blockDim.x + threadIdx.x));
+}
+
+template <typename T>
+void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, T min, T max) {
+
+  int maxThreads = 1024;
+
+  double * d_randoms;
+  cudaMalloc ((void **) &d_randoms, sizeof (double) * sizeOfSample);
+
+  int numSmallBuckets = (sizeOfSample / (numPivots - 1));
+  
+  createRandomVectorThrust(d_randoms, sizeOfSample, sizeOfVector);
+
+  // converts randoms floats into elements from necessary indices
+  getElements<<<(sizeOfSample/maxThreads), maxThreads>>>(d_randoms, d_list, sizeOfVector);
+
+  pivots[0] = (T) min;
+  pivots[numPivots-1] = (T) max;
+
+  thrust::device_ptr<double>randoms_ptr(d_randoms);
+  thrust::sort(randoms_ptr, randoms_ptr + sizeOfSample);
+
+  cudaThreadSynchronize();
+
+  double holder;
+
+  for (int i = 1; i < numPivots - 1; i++) {
+    cudaMemcpy (&holder, (d_randoms + numSmallBuckets * i), sizeof (double), cudaMemcpyDeviceToHost);
+    *(pivots + i) = (T) holder;
+    slopes[i-1] = numSmallBuckets /(pivots[i] - pivots[i-1]);
+  }
+    
+  slopes[numPivots-2] = numSmallBuckets / (pivots[numPivots-1] - pivots[numPivots-2]);
+
+  cudaFree(d_randoms);
+}
+*/
+
+
 int main() {
 
   for (int i = 0; i < 1; i++) {
-    int sizeOfVector = 1000000;
+    int sizeOfVector = 100000000;
     int sizeOfSample = 1024;
-    int numPivots = 9;
+    int numPivots = 17;
     
     //********* TEST FLOAT **********//
     if (FLOAT) {
