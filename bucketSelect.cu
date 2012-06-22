@@ -487,6 +487,7 @@ namespace BucketSelect{
     uint * d_randomInts;
     int endOffset = 22;
     int pivotOffset = (sizeOfSample - endOffset * 2) / (numPivots - 3);
+    int numSmallBuckets = sizeOfSample / (numPivots - 1);
 
     cudaMalloc ((void **) &d_randomFloats, sizeof (float) * sizeOfSample);
   
@@ -508,15 +509,15 @@ namespace BucketSelect{
     // set the pivots which are next to the min and max pivots using the random element endOffset away from the ends
     cudaMemcpy (pivots + 1, d_randomInts + endOffset - 1, sizeof (uint), cudaMemcpyDeviceToHost);
     cudaMemcpy (pivots + numPivots - 2, d_randomInts + sizeOfSample - endOffset - 1, sizeof (uint), cudaMemcpyDeviceToHost);
-    slopes[0] = endOffset / (double) (pivots[1] - pivots[0]);
+    slopes[0] = numSmallBuckets / (double) (pivots[1] - pivots[0]);
 
     for (int i = 2; i < numPivots - 2; i++) {
       cudaMemcpy (pivots + i, d_randomInts + pivotOffset * (i - 1) + endOffset - 1, sizeof (uint), cudaMemcpyDeviceToHost);
-      slopes[i-1] = pivotOffset / (double) (pivots[i] - pivots[i-1]);
+      slopes[i-1] = numSmallBuckets / (double) (pivots[i] - pivots[i-1]);
     }
 
-    slopes[numPivots-3] = pivotOffset / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
-    slopes[numPivots-2] = endOffset / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
+    slopes[numPivots-3] = numSmallBuckets / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
+    slopes[numPivots-2] = numSmallBuckets / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
     // for (int i = 0; i < numPivots - 2; i++)
     //  printf("slopes = %lf\n", slopes[i]);
@@ -531,6 +532,7 @@ namespace BucketSelect{
     T * d_randoms;
     int endOffset = 22;
     int pivotOffset = (sizeOfSample - endOffset * 2) / (numPivots - 3);
+    int numSmallBuckets = sizeOfSample / (numPivots - 1);
 
     cudaMalloc ((void **) &d_randoms, sizeof (T) * sizeOfSample);
   
@@ -550,15 +552,15 @@ namespace BucketSelect{
     // set the pivots which are endOffset away from the min and max pivots
     cudaMemcpy (pivots + 1, d_randoms + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
     cudaMemcpy (pivots + numPivots - 2, d_randoms + sizeOfSample - endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-    slopes[0] = pivotOffset / (double) (pivots[1] - pivots[0]);
+    slopes[0] = numSmallBuckets / (double) (pivots[1] - pivots[0]);
 
     for (int i = 2; i < numPivots - 2; i++) {
       cudaMemcpy (pivots + i, d_randoms + pivotOffset * (i - 1) + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[i-1] = pivotOffset / (double) (pivots[i] - pivots[i-1]);
+      slopes[i-1] = numSmallBuckets / (double) (pivots[i] - pivots[i-1]);
     }
 
-    slopes[numPivots-3] = pivotOffset / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
-    slopes[numPivots-2] = pivotOffset / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
+    slopes[numPivots-3] = numSmallBuckets / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
+    slopes[numPivots-2] = numSmallBuckets / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
     cudaFree(d_randoms);
   }
