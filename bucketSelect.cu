@@ -148,15 +148,15 @@ namespace BucketSelect{
   }
 
   //this function finds the bin containing the kth element we are looking for (works on the host)
-  inline int FindKBucket(uint *d_counter, uint *h_counter, const int num_buckets, const int k, uint * sum){
+  inline int FindKBucket(uint *d_counter, uint *h_counter, const int numBuckets, const int k, uint * sum){
     cudaMemcpy(sum, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
     int Kbucket = 0;
     
     if (*sum<k){
-      cudaMemcpy(h_counter, d_counter, num_buckets * sizeof(uint), cudaMemcpyDeviceToHost);
-      while ( (*sum<k) & (Kbucket<num_buckets-1)){
+      cudaMemcpy(h_counter, d_counter, numBuckets * sizeof(uint), cudaMemcpyDeviceToHost);
+      while ( (*sum<k) & (Kbucket<numBuckets-1)){
         Kbucket++; 
-        *sum = *sum + h_counter[Kbucket];
+        *sum += h_counter[Kbucket];
       }
     }
     else{
@@ -166,6 +166,7 @@ namespace BucketSelect{
     return Kbucket;
   }
 
+  /*
   //this function finds the bin containing the kth element we are looking for (works on the host)
   inline int FindSmartKBucket(uint *d_counter, uint *h_counter, const int num_buckets,  int k, uint * sum){
     cudaMemcpy(sum, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
@@ -187,6 +188,7 @@ namespace BucketSelect{
   
     return Kbucket;
   }
+  */
 
   template <typename T>
   __global__ void GetKvalue(T* d_vector, int * d_bucket, const int Kbucket, const int n, T* Kvalue, int offset )
@@ -480,14 +482,13 @@ namespace BucketSelect{
   }
 
   template <typename T>
-  void generatePivots (uint * pivots, double * slopes, uint * d_list, int sizeOfVector, int numPivots, int sizeOfSample, uint min, uint max) {
+  void generatePivots (uint * pivots, double * slopes, uint * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, uint min, uint max) {
   
-    int maxThreads = 1024;
     float * d_randomFloats;
     uint * d_randomInts;
     int endOffset = 22;
     int pivotOffset = (sizeOfSample - endOffset * 2) / (numPivots - 3);
-    int numSmallBuckets = sizeOfSample / (numPivots - 1);
+    int numSmallBuckets = totalSmallBuckets / (numPivots - 1);
 
     cudaMalloc ((void **) &d_randomFloats, sizeof (float) * sizeOfSample);
   
@@ -496,7 +497,7 @@ namespace BucketSelect{
     createRandomVector (d_randomFloats, sizeOfSample);
 
     // converts randoms floats into elements from necessary indices
-    enlargeIndexAndGetElements<<<(sizeOfSample/maxThreads), maxThreads>>>(d_randomFloats, d_randomInts, d_list, sizeOfVector);
+    enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randomFloats, d_randomInts, d_list, sizeOfVector);
 
     pivots[0] = min;
     pivots[numPivots-1] = max;
@@ -519,27 +520,26 @@ namespace BucketSelect{
     slopes[numPivots-3] = numSmallBuckets / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
     slopes[numPivots-2] = numSmallBuckets / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
-    // for (int i = 0; i < numPivots - 2; i++)
+    //    for (int i = 0; i < numPivots - 2; i++)
     //  printf("slopes = %lf\n", slopes[i]);
 
     cudaFree(d_randomInts);
   }
 
   template <typename T>
-  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, T min, T max) {
+  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, T min, T max) {
 
-    int maxThreads = 1024;
     T * d_randoms;
     int endOffset = 22;
     int pivotOffset = (sizeOfSample - endOffset * 2) / (numPivots - 3);
-    int numSmallBuckets = sizeOfSample / (numPivots - 1);
+    int numSmallBuckets = totalSmallBuckets / (numPivots - 1);
 
     cudaMalloc ((void **) &d_randoms, sizeof (T) * sizeOfSample);
   
     createRandomVector (d_randoms, sizeOfSample);
 
     // converts randoms floats into elements from necessary indices
-    enlargeIndexAndGetElements<<<(sizeOfSample/maxThreads), maxThreads>>>(d_randoms, d_list, sizeOfVector);
+    enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randoms, d_list, sizeOfVector);
 
     pivots[0] = min;
     pivots[numPivots-1] = max;
@@ -562,6 +562,9 @@ namespace BucketSelect{
     slopes[numPivots-3] = numSmallBuckets / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
     slopes[numPivots-2] = numSmallBuckets / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
+    //     for (int i = 0; i < numPivots - 2; i++)
+    //   printf("slopes = %lf\n", slopes[i]);
+
     cudaFree(d_randoms);
   }
 
@@ -572,6 +575,7 @@ namespace BucketSelect{
     int index = blockDim.x * blockIdx.x + threadIdx.x;
     int bucketIndex;
     int threadIndex = threadIdx.x;  
+    
 
     //variables in shared memory for fast access
     __shared__ int sharedNumSmallBuckets;
@@ -593,6 +597,7 @@ namespace BucketSelect{
     //reading bucket counts into shared memory where increments will be performed
     if(threadIndex < numBuckets) {
       sharedBuckets[threadIndex] = 0;
+      sharedBuckets[1024+threadIndex] = 0;
       if(threadIndex < numPivots) {
         sharedPivots[threadIndex] = pivots[threadIndex];
         if(threadIndex < (numPivots-1))
@@ -643,7 +648,7 @@ namespace BucketSelect{
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
     int numBlocks = blocks;
-    int numBuckets = 1024;
+    int numBuckets = 2048;
     int offset = blocks * threads;
 
     // variables for the randomized selection
@@ -657,9 +662,9 @@ namespace BucketSelect{
     uint kthBucketScanner = 0;
 
     // variable to store the end result
-    T kthValue = 0;
     int newInputLength;
     T* newInput;
+    T kthValue = 0;
 
     //find max and min with thrust
     T maximum, minimum;
@@ -697,7 +702,7 @@ namespace BucketSelect{
     T pivots[numPivots];
     
     //Find bucket sizes using a randomized selection
-    generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, minimum, maximum);
+    generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum);
     
     //Allocate memories
     double * d_slopes;
