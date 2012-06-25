@@ -30,6 +30,30 @@ namespace BucketSelect{
       printf("Error at %s:%d\n",__FILE__,__LINE__);     \
       return EXIT_FAILURE;}} while(0)
 
+  cudaEvent_t start, stop;
+  float time;
+
+  void timing(int selection, int ind){
+    if(selection==0) {
+      //****//
+      cudaEventCreate(&start);
+      cudaEventCreate(&stop);
+      cudaEventRecord(start,0);
+      //****//
+    }
+    else {
+      //****//
+      cudaThreadSynchronize();
+      cudaEventRecord(stop,0);
+      cudaEventSynchronize(stop);
+      cudaEventElapsedTime(&time, start, stop);
+      cudaEventDestroy(start);
+      cudaEventDestroy(stop);
+      printf("Time %d: %lf \n", ind, time);
+      //****//
+    }
+  }
+
   template<typename T>
   void cleanup(uint *h_c, T* d_k, int *etb, uint *bc){
     free(h_c);
@@ -59,9 +83,9 @@ namespace BucketSelect{
     sMin = minimum;
 
     //reading bucket counts into shared memory where increments will be performed
-    if(index < bucketNumbers){
-      sharedBuckets[index] = 0;
-    }
+    for(int i=0; i < (bucketNumbers/1024); i++) 
+      if(index < bucketNumbers) 
+        sharedBuckets[i*1024+index] = 0;
     syncthreads();
 
     //assigning elements to buckets and incrementing the bucket counts
@@ -83,9 +107,9 @@ namespace BucketSelect{
     syncthreads();
 
     //reading bucket counts from shared memory back to global memory
-    if(index < bucketNumbers){
-      atomicAdd(&bucketCount[index], sharedBuckets[index]);
-    }
+    for(int i=0; i < (bucketNumbers/1024); i++) 
+      if(index < bucketNumbers) 
+        atomicAdd(&bucketCount[i*1024+index], sharedBuckets[i*1024+index]);
   }
 
   //this function reassigns elements to buckets
@@ -308,7 +332,7 @@ namespace BucketSelect{
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
     int numBlocks = blocks;
-    int numBuckets = 1024;
+    int numBuckets = 4096;
     int offset = blocks * threads;
     int kthBucket, kthBucketCount;
     int newInputLength;
@@ -522,6 +546,8 @@ namespace BucketSelect{
   
     //    for (int i = 0; i < numPivots - 2; i++)
     //  printf("slopes = %lf\n", slopes[i]);
+    for (int i = 0; i < numPivots; i++)
+      printf("pivots = %lf\n", pivots[i]);
 
     cudaFree(d_randomInts);
   }
@@ -562,8 +588,8 @@ namespace BucketSelect{
     slopes[numPivots-3] = numSmallBuckets / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
     slopes[numPivots-2] = numSmallBuckets / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
-    //     for (int i = 0; i < numPivots - 2; i++)
-    //   printf("slopes = %lf\n", slopes[i]);
+    // for (int i = 0; i < numPivots; i++)
+    //  printf("pivots = %lf\n", pivots[i]);
 
     cudaFree(d_randoms);
   }
@@ -576,7 +602,6 @@ namespace BucketSelect{
     int bucketIndex;
     int threadIndex = threadIdx.x;  
     
-
     //variables in shared memory for fast access
     __shared__ int sharedNumSmallBuckets;
     sharedNumSmallBuckets = numBuckets / (numPivots-1);
@@ -595,16 +620,22 @@ namespace BucketSelect{
       }*/
 
     //reading bucket counts into shared memory where increments will be performed
-    if(threadIndex < numBuckets) {
-      sharedBuckets[threadIndex] = 0;
-      sharedBuckets[1024+threadIndex] = 0;
-      if(threadIndex < numPivots) {
-        sharedPivots[threadIndex] = pivots[threadIndex];
-        if(threadIndex < (numPivots-1))
-          sharedSlopes[threadIndex] = slopes[threadIndex];
-          }
+    for(int i=0; i < (numBuckets/1024); i++) 
+      if(threadIndex < numBuckets) 
+        sharedBuckets[i*1024+threadIndex] = 0;
+
+    if(threadIndex < numPivots) {
+      sharedPivots[threadIndex] = pivots[threadIndex];
+      if(threadIndex < (numPivots-1))
+        sharedSlopes[threadIndex] = slopes[threadIndex];
     }
     syncthreads();
+
+    /*
+    if(threadIndex ==10) 
+      printf("[%d]: %u\n", 1024+threadIndex, sharedBuckets[1024+threadIndex]);
+    syncthreads();
+    */
 
     //assigning elements to buckets and incrementing the bucket counts
     if(index < length)    {
@@ -638,8 +669,10 @@ namespace BucketSelect{
     syncthreads();
 
     //reading bucket counts from shared memory back to global memory
-    if(threadIndex < numBuckets)
-      atomicAdd(bucketCount + threadIndex, sharedBuckets[threadIndex]);
+    for(int i=0; i < (numBuckets/1024); i++) 
+      if(threadIndex < numBuckets) 
+        atomicAdd(bucketCount + i*1024 + threadIndex, sharedBuckets[i*1024 + threadIndex]);
+    
   }
 
   /* this function finds the kth-largest element from the input array */
@@ -648,7 +681,7 @@ namespace BucketSelect{
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
     int numBlocks = blocks;
-    int numBuckets = 2048;
+    int numBuckets = 4096;
     int offset = blocks * threads;
 
     // variables for the randomized selection
@@ -700,7 +733,7 @@ namespace BucketSelect{
     //Declare slopes and pivots
     double slopes[numPivots - 1];
     T pivots[numPivots];
-    
+
     //Find bucket sizes using a randomized selection
     generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum);
     
@@ -721,7 +754,7 @@ namespace BucketSelect{
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &kthBucketScanner);
     // kthBucket = FindSmartKBucket(d_bucketCount, h_bucketCount, numBuckets, K, length, &kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
- 
+
     printf("randomselect kbucket_count = %d\n", kthBucketCount);
 
     //we must update K since we have reduced the problem size to elements in the kth bucket
@@ -734,10 +767,8 @@ namespace BucketSelect{
     setToAllZero(count, 1);
     copyElement<<<numBlocks, threadsPerBlock>>>(d_vector, length, d_elementToBucket, kthBucket, newInput, count, offset);
 
-
     //store the length of the newly copied elements
     newInputLength = kthBucketCount;
-
 
     //if we only copied one element, then we are done
     if(newInputLength == 1){
@@ -769,7 +800,10 @@ namespace BucketSelect{
       minimum = max(minimum, (T) (pivots[pivotIndex] + pivotInnerindex / slopes[pivotIndex])); 
       maximum = min(maximum, (T) (pivots[pivotIndex] + (pivotInnerindex+1) / slopes[pivotIndex]));
       
-      kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
+      thrust::device_ptr<T>newInput_ptr(newInput);
+      thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
+      cudaMemcpy (&kthValue, newInput + K - 1, sizeof (T), cudaMemcpyDeviceToHost);
+      // kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
       
       /*
       minimum = max(minimum, minimum + kthBucket/slope);
@@ -777,7 +811,6 @@ namespace BucketSelect{
       kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
       */
     }
-
 
     //free all used memory
     cudaFree(d_elementToBucket);  cudaFree(d_bucketCount); cudaFree(newInput); cudaFree(count);cudaFree(d_slopes); cudaFree(d_pivots);free(h_bucketCount);
