@@ -43,9 +43,16 @@ void generateSortedArrayUints(uint* input, uint length, curandGenerator_t gen)
   cudaFree(d_generated);
 }
 
-#define NUMBEROFUINTDISTRIBUTIONS 2
-ptrToUintGeneratingFunction arrayOfUintGenerators[NUMBEROFUINTDISTRIBUTIONS] = {&generateUniformUnsignedIntegers,&generateSortedArrayUints};
-char* namesOfUintGeneratingFunctions[NUMBEROFUINTDISTRIBUTIONS]={"UNIFORM UNSIGNED INTEGERS","SORTED UINTS"};
+void generateUniformZeroToFourUints (uint* input, uint length, curandGenerator_t gen) {
+
+  for (uint i = 0; i < length; i++)
+    input[i] = i % 4;
+
+}
+
+#define NUMBEROFUINTDISTRIBUTIONS 3
+ptrToUintGeneratingFunction arrayOfUintGenerators[NUMBEROFUINTDISTRIBUTIONS] = {&generateUniformUnsignedIntegers,&generateSortedArrayUints,&generateUniformZeroToFourUints};
+char* namesOfUintGeneratingFunctions[NUMBEROFUINTDISTRIBUTIONS]={"UNIFORM UNSIGNED INTEGERS","SORTED UINTS","UNIFORM 0-4"};
 
 
 
@@ -151,7 +158,7 @@ void generateOnesTwosFloats(float* input, uint length, curandGenerator_t gen)
   float* devVec;
   cudaMalloc(&devVec, sizeof(float) * length);
 
-  int numFirstVal = (length * 95) / 100;
+  int numFirstVal = (length * 50) / 100;
   int numSecondVal = length - numFirstVal;
 
   //get device properties
