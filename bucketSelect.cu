@@ -607,8 +607,8 @@ namespace BucketSelect{
     sharedNumSmallBuckets = numBuckets / (numPivots-1);
 
     extern __shared__ uint sharedBuckets[];
-    __shared__ double sharedSlopes[NUM_PIVOTS-1];
-    __shared__ T sharedPivots[NUM_PIVOTS];
+    __shared__ double sharedSlopes[(NUM_PIVOTS-1)*32];
+    __shared__ T sharedPivots[NUM_PIVOTS*32];
 
     /*
     //Using one dynamic shared memory for all
@@ -624,10 +624,10 @@ namespace BucketSelect{
       if(threadIndex < numBuckets) 
         sharedBuckets[i*1024+threadIndex] = 0;
 
-    if(threadIndex < numPivots) {
-      sharedPivots[threadIndex] = pivots[threadIndex];
-      if(threadIndex < (numPivots-1))
-        sharedSlopes[threadIndex] = slopes[threadIndex];
+    if(threadIndex < numPivots*32) {
+      sharedPivots[threadIndex] = pivots[threadIndex/32];
+      if(threadIndex < (numPivots -1)*32)
+        sharedSlopes[threadIndex] = slopes[threadIndex/32];
     }
     syncthreads();
 
@@ -636,52 +636,25 @@ namespace BucketSelect{
       int i;
 
       for(i = index; i < length; i += offset){
-        /*
-       /// Naive while loop implementation
-
-       T num = d_vector[i];
-       int j = 1;
-
-       while (num > sharedPivots[j])
-       j++;
-
-       int midPivotIndex=j-1;
-       if (midPivotIndex >NUM_PIVOTS-1) midPivotIndex = NUM_PIVOTS-1;
-
-       if (threadIndex < 10)
-       printf("midPivotIndex = %d\n",midPivotIndex);
-        */
-
-        /*
-       /// binary search
-       T num = d_vector[i];
-       int minPivotIndex = 0;
-       int maxPivotIndex = numPivots-1;
-       int midPivotIndex;
-
-       // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
-       while (maxPivotIndex >= minPivotIndex) {
-       midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
-       if (sharedPivots[midPivotIndex+1] <= num)
-       minPivotIndex = midPivotIndex+1;
-       else if (sharedPivots[midPivotIndex] > num)
-       maxPivotIndex = midPivotIndex;
-       else
-       break;
-       }
-        */
-
-        int j=0;
         T num = d_vector[i];
-        T temp = num - sharedPivots[j];
- 
-        while ( (j<numPivots-2) && (temp<0) ) {
-          j++;
-          temp = num - sharedPivots[j];
+        int minPivotIndex = 0;
+        int maxPivotIndex = numPivots-1;
+        int midPivotIndex;
+
+        // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
+        while (maxPivotIndex >= minPivotIndex) {
+          midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
+          if (sharedPivots[(midPivotIndex+1)*32+(threadIdx.x%32)] <= num)
+            minPivotIndex = midPivotIndex+1;
+          else if (sharedPivots[midPivotIndex*32+(threadIdx.x%32)] > num)
+            maxPivotIndex = midPivotIndex;
+          else
+            break;
         }
 
-        bucketIndex = j*sharedNumSmallBuckets + (int)(temp*sharedSlopes[j]);
+        bucketIndex = (midPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[midPivotIndex*32+(threadIdx.x%32)]) * sharedSlopes[midPivotIndex*32+(threadIdx.x%32)]);
         elementToBucket[i] = bucketIndex;
+        // hashmap implementation set[bucketindex]=add.i;
         atomicInc(sharedBuckets + bucketIndex, length);
       }
     }
@@ -689,10 +662,73 @@ namespace BucketSelect{
     syncthreads();
 
     //reading bucket counts from shared memory back to global memory
-    for(int i=0; i < (numBuckets/1024); i++) 
-      if(threadIndex < numBuckets) 
+    for(int i=0; i < (numBuckets/1024); i++)
+      if(threadIndex < numBuckets)
         atomicAdd(bucketCount + i*1024 + threadIndex, sharedBuckets[i*1024 + threadIndex]);
-    
+
+    /*
+   /// Naive while loop implementation
+
+   T num = d_vector[i];
+   int j = 1;
+
+   while (num > sharedPivots[j])
+   j++;
+
+   int midPivotIndex=j-1;
+   if (midPivotIndex >NUM_PIVOTS-1) midPivotIndex = NUM_PIVOTS-1;
+
+   if (threadIndex < 10)
+   printf("midPivotIndex = %d\n",midPivotIndex);
+    */
+
+
+    /*
+   /// binary search
+   T num = d_vector[i];
+   int minPivotIndex = 0;
+   int maxPivotIndex = numPivots-1;
+   int midPivotIndex;
+
+   // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
+   while (maxPivotIndex >= minPivotIndex) {
+   midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
+   if (sharedPivots[midPivotIndex+1] <= num)
+   minPivotIndex = midPivotIndex+1;
+   else if (sharedPivots[midPivotIndex] > num)
+   maxPivotIndex = midPivotIndex;
+   else
+   break;
+   }
+    */
+
+
+    /*
+   /// temp computation idea
+   int j=0;
+   T num = d_vector[i];
+   int ind = (j+1)*32+(threadIdx.x%32); 
+   T temp = num - sharedPivots[ind];
+   while ( (j<numPivots-2) && (temp>=0) ) {
+   j++;
+   temp = num - sharedPivots[(j+1)*32+(threadIdx.x%32)];
+   }
+
+   ind = j*32+(threadIdx.x%32); 
+   temp = num - sharedPivots[ind];
+   bucketIndex = j*sharedNumSmallBuckets + (int)(temp*sharedSlopes[ind]);
+   elementToBucket[i] = bucketIndex;
+   atomicInc(sharedBuckets + bucketIndex, length);
+   }
+   }
+
+   syncthreads();
+
+   //reading bucket counts from shared memory back to global memory
+   for(int i=0; i < (numBuckets/1024); i++) 
+   if(threadIndex < numBuckets) 
+   atomicAdd(bucketCount + i*1024 + threadIndex, sharedBuckets[i*1024 + threadIndex]);
+    */
   }
   
   //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
@@ -700,7 +736,6 @@ namespace BucketSelect{
   __global__ void assignSmartBucket1(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, int* elementToBucket, uint* bucketCount, int offset){
     int index = blockDim.x * blockIdx.x + threadIdx.x;
     int threadIndex = threadIdx.x;  
-    int blockIndex = BL*blockIdx.x;
     __shared__ T sharedPivots[NUM_PIVOTS];
 
     if(threadIndex < numPivots) 
