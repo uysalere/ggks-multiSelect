@@ -13,7 +13,8 @@
  * limitations under the License.
  */
 #include <stdio.h>
-#include <thrust/binary_search.h>
+#include <thrust/binary_search.h>  
+#include <thrust/device_vector.h>
 #include <thrust/sort.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/random.h>
@@ -26,7 +27,6 @@ namespace BucketSelect{
 #define MAX_THREADS_PER_BLOCK 1024
 #define CUTOFF_POINT 200000 
 #define NUM_PIVOTS 17
-#define BL 64
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {      \
       printf("Error at %s:%d\n",__FILE__,__LINE__);     \
@@ -334,7 +334,7 @@ namespace BucketSelect{
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
     int numBlocks = blocks;
-    int numBuckets = 4096;
+    int numBuckets = 1024;
     int offset = blocks * threads;
     int kthBucket, kthBucketCount;
     int newInputLength;
@@ -607,8 +607,8 @@ namespace BucketSelect{
     sharedNumSmallBuckets = numBuckets / (numPivots-1);
 
     extern __shared__ uint sharedBuckets[];
-    __shared__ double sharedSlopes[(NUM_PIVOTS-1)*32];
-    __shared__ T sharedPivots[NUM_PIVOTS*32];
+    __shared__ double sharedSlopes[NUM_PIVOTS-1];
+    __shared__ T sharedPivots[NUM_PIVOTS];
 
     /*
     //Using one dynamic shared memory for all
@@ -624,10 +624,10 @@ namespace BucketSelect{
       if(threadIndex < numBuckets) 
         sharedBuckets[i*1024+threadIndex] = 0;
 
-    if(threadIndex < numPivots*32) {
-      sharedPivots[threadIndex] = pivots[threadIndex/32];
-      if(threadIndex < (numPivots -1)*32)
-        sharedSlopes[threadIndex] = slopes[threadIndex/32];
+    if(threadIndex < numPivots) {
+      sharedPivots[threadIndex] = pivots[threadIndex];
+      if(threadIndex < numPivots -1)
+        sharedSlopes[threadIndex] = slopes[threadIndex];
     }
     syncthreads();
 
@@ -642,17 +642,16 @@ namespace BucketSelect{
         int midPivotIndex;
 
         // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
-        while (maxPivotIndex >= minPivotIndex) {
+        //while (maxPivotIndex > minPivotIndex+1) {
+        for(int j=1; j <numPivots-1; j*=2) {
           midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
-          if (sharedPivots[(midPivotIndex+1)*32+(threadIdx.x%32)] <= num)
-            minPivotIndex = midPivotIndex+1;
-          else if (sharedPivots[midPivotIndex*32+(threadIdx.x%32)] > num)
-            maxPivotIndex = midPivotIndex;
+          if (num >= sharedPivots[midPivotIndex])
+            minPivotIndex = midPivotIndex;
           else
-            break;
+            maxPivotIndex = midPivotIndex;
         }
 
-        bucketIndex = (midPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[midPivotIndex*32+(threadIdx.x%32)]) * sharedSlopes[midPivotIndex*32+(threadIdx.x%32)]);
+        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
         atomicInc(sharedBuckets + bucketIndex, length);
@@ -907,12 +906,22 @@ namespace BucketSelect{
     setToAllZero(d_bucketCount, numBuckets);
 
     //Distribute elements into their respective buckets
-    timing(0, 1);
+    /*
+    thrust::device_vector<T> d_vec_pivots(pivots, pivots + numPivots);
+    thrust::device_vector<T> d_vec_ptr(dev_ptr, dev_ptr + length);
+    thrust::device_vector<int> d_elementToBucket_ptr(length);
+    timing(0, 3);  
+    thrust::lower_bound(d_vec_pivots.begin(), d_vec_pivots.end(), d_vec_ptr.begin(), d_vec_ptr.end(), d_elementToBucket_ptr.begin());
+    timing(1, 3);
+    d_elementToBucket = thrust::raw_pointer_cast(d_elementToBucket_ptr.data());
+    assignSmartBucket2<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
+    */
+    timing(0, 3);  
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
-    timing(1, 1);
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &kthBucketScanner);
     // kthBucket = FindSmartKBucket(d_bucketCount, h_bucketCount, numBuckets, K, length, &kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
+    timing(1, 3);
 
     printf("randomselect kbucket_count = %d\n", kthBucketCount);
 
@@ -959,12 +968,13 @@ namespace BucketSelect{
       int pivotInnerindex = kthBucket - pivotOffset * pivotIndex;
       minimum = max(minimum, (T) (pivots[pivotIndex] + pivotInnerindex / slopes[pivotIndex])); 
       maximum = min(maximum, (T) (pivots[pivotIndex] + (pivotInnerindex+1) / slopes[pivotIndex]));
-     
-      thrust::device_ptr<T>newInput_ptr(newInput);
-      thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
-      cudaMemcpy (&kthValue, newInput + K - 1, sizeof (T), cudaMemcpyDeviceToHost);
       
-      //kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
+      if (newInputLength<33000) {
+        thrust::device_ptr<T>newInput_ptr(newInput);
+        thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
+        cudaMemcpy (&kthValue, newInput + K - 1, sizeof (T), cudaMemcpyDeviceToHost);
+      } else
+        kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
       
       /*
       minimum = max(minimum, minimum + kthBucket/slope);
