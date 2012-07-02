@@ -349,7 +349,7 @@ namespace BucketSelect{
     //variable to store the end result
     T kthValue = 0;
     T* newInput;
-
+    /*
     //find max and min with thrust
     double maximum, minimum;
 
@@ -370,8 +370,9 @@ namespace BucketSelect{
     if(K == length){
       return maximum;
     }		
-    //Allocate memory to store bucket assignments
-  
+    */
+
+    //Allocate memory to store bucket assignments  
     CUDA_CALL(cudaMalloc(&elementToBucket, size));
 
     //Allocate memory to store bucket counts
@@ -547,8 +548,8 @@ namespace BucketSelect{
     slopes[numPivots-3] = numSmallBuckets / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
     slopes[numPivots-2] = numSmallBuckets / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
-    //    for (int i = 0; i < numPivots - 2; i++)
-    //  printf("slopes = %lf\n", slopes[i]);
+    // for (int i = 0; i < numPivots - 2; i++)
+    // printf("slopes = %lf\n", slopes[i]);
 
     cudaFree(d_randomInts);
   }
@@ -567,21 +568,17 @@ namespace BucketSelect{
       // converts randoms floats into elements from necessary indices
       enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randoms, d_list, sizeOfVector);
 
-      pivots[0] = min;
-      pivots[numPivots-1] = max;
-
       thrust::device_ptr<T>randoms_ptr(d_randoms);
       thrust::sort(randoms_ptr, randoms_ptr + sizeOfSample);
 
       cudaThreadSynchronize();
 
       // set the pivots which are endOffset away from the min and max pivots
-      cudaMemcpy (pivots + 1, d_randoms + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-      cudaMemcpy (pivots + numPivots - 2, d_randoms + sizeOfSample - endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[0] = numSmallBuckets / (double) (pivots[1] - pivots[0]);
+      cudaMemcpy (pivots, d_randoms + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
+      cudaMemcpy (pivots + numPivots - 3, d_randoms + sizeOfSample - endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
 
-      for (int i = 2; i < numPivots - 2; i++) {
-        cudaMemcpy (pivots + i, d_randoms + pivotOffset * (i - 1) + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
+      for (int i = 1; i < numPivots - 2; i++) {
+        cudaMemcpy (pivots + i, d_randoms + pivotOffset * i + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
         slopes[i-1] = numSmallBuckets / (double) (pivots[i] - pivots[i-1]);
       }
 
@@ -589,7 +586,7 @@ namespace BucketSelect{
       slopes[numPivots-2] = numSmallBuckets / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
   
       // for (int i = 0; i < numPivots; i++)
-      //  printf("pivots = %lf\n", pivots[i]);
+      // printf("pivots = %lf\n", pivots[i]);
 
       cudaFree(d_randoms);
   }
@@ -846,6 +843,7 @@ namespace BucketSelect{
     T* newInput;
     T kthValue = 0;
 
+    /*
     //find max and min with thrust
     T maximum, minimum;
 
@@ -867,6 +865,7 @@ namespace BucketSelect{
     if(K == length){
       return maximum;
     }		
+    */
 
     //Allocate memory to store bucket counts
     size_t totalBucketSize = numBuckets * sizeof(uint);
@@ -878,28 +877,18 @@ namespace BucketSelect{
 
     /// ****STEP 2: Generate Pivots and Slopes
     //Declare slopes and pivots
-    double slopes[numPivots - 1];
-    T pivots[numPivots];
-
+    double slopes[numPivots - 3];
+    T pivots[numPivots-2];
     //Find bucket sizes using a randomized selection
-    generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum);
-    
+    generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets);    
+
     //Allocate memories
     double * d_slopes;
     CUDA_CALL(cudaMalloc(&d_slopes, (numPivots - 1) * sizeof(double)));
-    CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));  
+    CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));
     T * d_pivots;
     CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
     CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice));
-
-    /*
-    thrust::device_vector<T>d_pivots_vec(d_pivots, d_pivots + numPivots - 1);
-
-    int * d_pivot_inds;
-    CUDA_CALL(cudaMalloc(&d_pivot_inds, size));  
-    thrust::device_ptr<T>d_pivot_inds_ptr(d_pivot_inds);
-    thrust::lower_bound(d_pivots_vec.begin(), d_pivots_vec.end(), d_vector); // returns input.begin()
-    */
 
     CUDA_CALL(cudaMalloc(&count, sizeof(uint)));
     //Set the bucket count vector to all zeros
