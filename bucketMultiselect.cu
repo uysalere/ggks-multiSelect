@@ -8,9 +8,9 @@
 
 namespace BucketSelect{
 
-template <typename T>
-void bucketMultiselectWrapper (T * d_vector, int length, uint * kVals, uint kCount, T * ouputs, int blocks, int threads) {
-  return;
-}
+  template <typename T>
+  void bucketMultiselectWrapper (T * d_vector, int length, uint * kVals, uint kCount, T * ouputs, int blocks, int threads) {
+    return;
+  }
 
 }

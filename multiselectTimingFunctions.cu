@@ -32,8 +32,8 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
 
 
   T* d_vec;
-  T returnValueFromSelect;
-  results_t<T> *result;
+  results_t<T> * result =  (results_t<T> *) malloc (sizeof (results_t<T>));
+  result->vals = (T *) malloc (kCount * sizeof (T));
   float time;
   cudaEvent_t start, stop;
  
@@ -50,7 +50,7 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
 
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
-  cudaEventElapsedTime(&time, start,stop);
+  cudaEventElapsedTime(&time, start, stop);
 
 
   wrapupForTiming(start,stop, d_vec, result, time);
@@ -59,12 +59,13 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
 
 // FUNCTION TO TIME BUCKET MULTISELECT
 template<typename T>
-results_t<T>* timeBucketMultiselect (T *h_vec, uint numElements, uint * kVals, uint kCount){
+results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount){
 
 
   T* d_vec;
-  T returnValueFromSelect;
-  results_t<T> *result;
+  results_t<T> * result = (results_t<T> *) malloc (sizeof (results_t<T>));
+  result->vals = (T *) malloc (kCount * sizeof (T));
+
   float time;
   cudaEvent_t start, stop;
   cudaDeviceProp dp;
@@ -72,7 +73,7 @@ results_t<T>* timeBucketMultiselect (T *h_vec, uint numElements, uint * kVals, u
   cudaGetDeviceProperties(&dp,0);
 
 
-  setupForTiming(start,stop, &d_vec, hostVec, size, &result);
+  setupForTiming(start,stop, &d_vec, h_vec, numElements, &result);
 
   cudaEventRecord(start, 0);
 
@@ -83,6 +84,6 @@ results_t<T>* timeBucketMultiselect (T *h_vec, uint numElements, uint * kVals, u
   cudaEventElapsedTime(&time,start,stop);
 
 
-  wrapupForTiming(start,stop, deviceVec, result, time);
+  wrapupForTiming(start, stop, d_vec, result, time);
   return result;
 }
