@@ -23,14 +23,14 @@ CFLAGS += $(COMMONFLAGS)
 
 LIB_CUDA := -L$(CUDA_INSTALL_PATH)/lib -lcurand -lm -lgsl -lgslcblas
 
-compareAlgorithms: compareAlgorithms.cu bucketSelect.cu
+compareAlgorithms: compareAlgorithms.cu bucketSelect.cu randomizedBucketSelect.cu
 	$(NVCC) -o compareAlgorithms compareAlgorithms.cu $(NVCCFLAGS)
 
 #bucketSelect: bucketSelect.cu
 #	$(NVCC) -o bucketSelect bucketSelect.cu $(NVCCFLAGS)
 
 multiselect: compareMultiselect.cu bucketMultiselect.cu
-	$(NVCC) -o compareMultiselect compareMultiselect.cu $(NVCCFLAGS) -g
+	$(NVCC) -o compareMultiselect compareMultiselect.cu $(NVCCFLAGS)
 
 clean:
 	rm -f compareAlgorithms compareMultiselect *~ x
