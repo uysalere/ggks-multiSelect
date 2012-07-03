@@ -15,7 +15,7 @@
 
 #include <cuda.h>
 #include <curand.h>
-
+#define CUDART_PI_F 3.141592654f
 
 ///////////////////////////////////////////////////////////////////
 ////           FUNCTIONS TO GENERATE UINTS
