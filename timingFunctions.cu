@@ -203,12 +203,11 @@ results_t<T>* timeRandomizedBucketSelect(T* hostVec, uint size, uint k){
 
   cudaEventRecord(start, 0);
 
-  retFromSelect = BucketSelect::randomizedBucketSelectWrapper(deviceVec, size, k, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+  retFromSelect = RandomizedBucketSelect::randomizedBucketSelectWrapper(deviceVec, size, k, dp.multiProcessorCount, dp.maxThreadsPerBlock);
  
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&time,start,stop);
-
 
   wrapupForTiming(start,stop, deviceVec, result, time, retFromSelect);
   return result;
@@ -227,7 +226,7 @@ results_t<T>* timeRandomizedSelect(T* hostVec, uint size, uint k)
   T* deviceVec;
 
   setupForTiming(start,stop, &deviceVec, hostVec, size, &result);
- 
+
   cudaEventRecord(start, 0);
 
   returnValueFromSelect = randomizedSelect(deviceVec,size,k,.90);
