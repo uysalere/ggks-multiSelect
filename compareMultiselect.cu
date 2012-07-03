@@ -47,8 +47,6 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   uint i,j,m,x;
   int runOrder[NUMBEROFALGORITHMS];
 
-  printf("1\n");
-
   unsigned long long seed;
   results_t<T> *temp;
   ofstream fileCsv;
@@ -78,8 +76,6 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   h_vec = (T *) malloc(size * sizeof(T));
   h_vec_copy = (T *) malloc(size * sizeof(T));
 
-  printf("2\n");
-
   //create the random generator.
   curandGenerator_t generator;
   srand(unsigned(time(NULL)));
@@ -93,8 +89,6 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
     for(m = 0; m < NUMBEROFALGORITHMS;m++)
       runOrder[m] = m;
     
-    printf("3\n");
-
     std::random_shuffle(runOrder, runOrder + NUMBEROFALGORITHMS);
     fileCsv << size <<"," << kVals[kCount - 1] << "," << namesOfGeneratingFunctions[generateType] << "," << seed<< ",";
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
@@ -106,16 +100,12 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
     //copy the vector to h_vec_copy, which will be used to restore it later
     memcpy(h_vec_copy, h_vec, size * sizeof(T));
 
-    printf("4\n");
-
     winnerArray[i] = 0;
     float currentWinningTime = INFINITY;
     //run the various timing functions
     for(x = 0; x < NUMBEROFALGORITHMS; x++){
       j = runOrder[x];
       if(algorithmsToTest[j]){
-        printf("4.5\n");
-
 
         //run timing function j
         printf("TESTING: %u\n", j);
@@ -131,9 +121,6 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
           winnerArray[i] = j;
         }
 
-
-
-        printf("5\n");
         //perform clean up 
         free(temp);
         memcpy(h_vec_copy, h_vec, size * sizeof(T));
@@ -144,8 +131,6 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
     for(x = 0; x < NUMBEROFALGORITHMS; x++)
       if(algorithmsToTest[x])
         fileCsv << namesOfMultiselectTimingFunctions[x] << "," << resultsArray[x][i] << "," << timeArray[x][i] << ",";
-
-    printf("6\n");
 
     uint flag = 0;
     for(m = 1; m < NUMBEROFALGORITHMS;m++)
@@ -159,8 +144,6 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
     fileCsv << flag << "\n";
   }
   
-  printf("7\n");
-
   //calculate the total time each algorithm took
   for(i = 0; i < numTests; i++)
     for(j = 0; j < NUMBEROFALGORITHMS;j++)
@@ -171,8 +154,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   //count the number of times each algorithm won. 
   for(i = 0; i < numTests;i++)
     timesWon[winnerArray[i]]++;
-  
-  printf("8\n");
+
   printf("\n\n");
 
   //print out the average times
@@ -188,26 +170,26 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
     for(j = 1; j < NUMBEROFALGORITHMS; j++)
       for (m = 0; m < kCount; m++)
         if(algorithmsToTest[j])
-          if(resultsArray[j][i][m] != resultsArray[0][i][m]){
-            std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test" << i +1 << " it got "<< resultsArray[j][i];
+          if(resultsArray[j][i][m] != resultsArray[0][i][m]) {
+            std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test" << i + 1 << " it got "<< resultsArray[j][i];
             std::cout << "instead of " << resultsArray[0][i][m] << "\n" ;
             std::cout << "RESULT:\t";
             PrintFunctions::printBinary(resultsArray[j][i][m]);
             std::cout << "Right:\t";
             PrintFunctions::printBinary(resultsArray[0][i][m]);
           }
-  printf("9\n");
 
-  for(i = 0; i < numTests; i++)
-    for(m = 0; m < NUMBEROFALGORITHMS; m++)
-      free(resultsArray[m][i]);
+  for(i = 0; i < numTests; i++) 
+    for(m = 0; m < NUMBEROFALGORITHMS; m++) 
+      if(algorithmsToTest[m])
+        free(resultsArray[m][i]);
+
 
   //free h_vec and h_vec_copy
   free(h_vec);
   free(h_vec_copy);
   //close the file
   fileCsv.close();
-
 }
 
 
@@ -239,8 +221,7 @@ void runTests(uint generateType, char* fileName,uint startPower, uint stopPower,
 }
 
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   char *fileName;
 
   uint testCount;
@@ -275,5 +256,7 @@ int main(int argc, char *argv[])
     printf("You entered and invalid option, now exiting\n");
     break;
   }
+
+  free (fileName);
   return 0;
 }

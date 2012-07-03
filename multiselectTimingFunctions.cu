@@ -2,23 +2,23 @@
 #include <stdlib.h>
 
 template <typename T>
- struct results_t{
+ struct results_t {
   float time;
   T * vals;
 };
 
 template<typename T>
-void setupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T **d_vec, T* h_vec, uint size, results_t<T> **result, uint kCount){
+void setupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T **d_vec, T* h_vec, uint size, results_t<T> **result, uint kCount) {
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
   cudaMalloc(d_vec, size * sizeof(T));
   cudaMemcpy(*d_vec, h_vec, size * sizeof(T), cudaMemcpyHostToDevice);
-  *result = (results_t<T> *)malloc(sizeof(results_t<T>));
+  *result = (results_t<T> *) malloc(sizeof(results_t<T>));
   (*result)->vals = (T *) malloc (kCount * sizeof (T));
 }
 
 template<typename T>
-void wrapupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T* d_vec, results_t<T> *result, float time){
+void wrapupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T* d_vec, results_t<T> *result, float time) {
   cudaFree(d_vec);
   cudaEventDestroy(start);
   cudaEventDestroy(stop);
@@ -30,7 +30,7 @@ void wrapupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T* d_vec, results_t<
 //          THE SORT AND CHOOSE TIMING FUNCTION
 /////////////////////////////////////////////////////////////////
 template<typename T>
-results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kVals, uint kCount){
+results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kVals, uint kCount) {
 
 
   T* d_vec;
@@ -60,7 +60,7 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
 
 // FUNCTION TO TIME BUCKET MULTISELECT
 template<typename T>
-results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount){
+results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount) {
 
 
   T* d_vec;
