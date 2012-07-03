@@ -41,10 +41,10 @@
 #include "merrillSelect.cu"
 #include "bucketSelect.cu"
 #include "randomizedSelect.cu"
+#include "randomizedBucketSelect.cu"
 
 #include "generateProblems.cu"
 #include "timingFunctions.cu"
-
 #define NUMBEROFALGORITHMS 6
 char* namesOfTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and choose", "Radix select","Bucket Select", "Rand Bucket Select", "Plane Cutting","Randomized Select"}; 
  
