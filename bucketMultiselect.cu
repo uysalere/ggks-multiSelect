@@ -6,6 +6,20 @@
 #include <thrust/sort.h>
 #include <thrust/transform_reduce.h>
 
+
+template <typename T>
+void printStuff (T * d_list, int size) {
+  T * p = (T *) malloc (sizeof (T) * size);
+
+  cudaMemcpy (p, d_list, sizeof(T)* size, cudaMemcpyDeviceToHost);
+
+  for (int i = 0; i < size; i++)
+    // printf("%lf\n", *(p+i));
+    std::cout << *(p+i) << "\n";
+  
+  free(p);
+}
+
 namespace BucketMultiselect{
   using namespace std;
 
@@ -584,22 +598,22 @@ namespace BucketMultiselect{
     }*/
   
     //reading bucket counts into shared memory where increments will be performed
-    for(int i=0; i < (numBuckets/1024); i++) 
+    for(int i=0; i < (numBuckets / 1024); i++) 
       if(threadIndex < numBuckets) 
         sharedBuckets[i*1024+threadIndex] = 0;
 
     if(threadIndex < numPivots) {
       sharedPivots[threadIndex] = pivots[threadIndex];
-      if(threadIndex < numPivots -1)
+      if(threadIndex < numPivots - 1)
         sharedSlopes[threadIndex] = slopes[threadIndex];
     }
     syncthreads();
 
     //assigning elements to buckets and incrementing the bucket counts
-    if(index < length)    {
+    if(index < length) {
       int i;
 
-      for(i = index; i < length; i += offset){
+      for(i = index; i < length; i += offset) {
         T num = d_vector[i];
         int minPivotIndex = 0;
         int maxPivotIndex = numPivots-1;
@@ -607,7 +621,7 @@ namespace BucketMultiselect{
 
         // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
         //while (maxPivotIndex > minPivotIndex+1) {
-        for(int j=1; j <numPivots-1; j*=2) {
+        for(int j = 1; j < numPivots - 1; j*=2) {
           midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
           if (num >= sharedPivots[midPivotIndex])
             minPivotIndex = midPivotIndex;
@@ -734,25 +748,26 @@ namespace BucketMultiselect{
       }
       return 0;
     }
+
     /*
     //if we want the max or min just return it
     if(K == 1){
-      return minimum;
+    return minimum;
     }
     if(K == length){
-      return maximum;
+    return maximum;
     }	
     */	
 
     //Allocate memory to store bucket counts
     size_t size = length * sizeof(int);
-    uint *count; 
+    uint * count; 
 
     size_t totalBucketSize = numBuckets * sizeof(uint);
-    uint* h_bucketCount = (uint*)malloc(totalBucketSize);
-    uint *d_bucketCount; //array showing the number of elements in each bucket
+    uint * h_bucketCount = (uint*)malloc(totalBucketSize);
+    uint * d_bucketCount; //array showing the number of elements in each bucket
     CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
-    int* d_elementToBucket; //array showing what bucket every element is in
+    int * d_elementToBucket; //array showing what bucket every element is in
     CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
 
     /// ****STEP 2: Generate Pivots and Slopes
@@ -763,10 +778,16 @@ namespace BucketMultiselect{
     //Find bucket sizes using a randomized selection
     generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum);
     
+    printf("cpu slopes:\n");
+    for (int i = 0; i < 10; i++)
+      printf("%lf\n", slopes[i]);
+
     //Allocate memories
     double * d_slopes;
     CUDA_CALL(cudaMalloc(&d_slopes, (numPivots - 1) * sizeof(double)));
     CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));  
+
+
     T * d_pivots;
     CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
     CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice));
@@ -774,20 +795,56 @@ namespace BucketMultiselect{
     //Set the bucket count vector to all zeros
     CUDA_CALL(cudaMalloc(&count, sizeof(uint)));
     setToAllZero(d_bucketCount, numBuckets);
-    
-    for (int i=0; i<kCount; i++) 
+
+    /*
+    for (int i = 0; i < kCount; i++) 
       printf("k[i] = %u\n", kVals[i]);
-    
+    */
+    int * d_kIndices;
+    uint * d_kVals;
+    CUDA_CALL(cudaMalloc(&d_kIndices, kCount));
+    CUDA_CALL(cudaMemcpy(d_kIndices, kIndices, kCount * sizeof (int), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMalloc(&d_kVals, kCount));
+    CUDA_CALL(cudaMemcpy(d_kVals, kVals, kCount * sizeof (uint), cudaMemcpyHostToDevice)); 
+
+
+    printf("slopes0:\n");
+    printStuff<double>(d_slopes, 2);
+
+
     // sort the given indices
-    thrust::device_ptr<uint>kVals_ptr(kVals);
-    thrust::device_ptr<int>kIndices_ptr(kIndices);
+    thrust::device_ptr<uint>kVals_ptr(d_kVals);
+    thrust::device_ptr<int>kIndices_ptr(d_kIndices);
     thrust::sort_by_key(kVals_ptr, kVals_ptr + kCount, kIndices_ptr);
-    
-    for (int i=0; i<kCount; i++) 
+
+    CUDA_CALL(cudaMemcpy(kIndices, d_kIndices, kCount * sizeof (int), cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(kVals, d_kVals, kCount * sizeof (uint), cudaMemcpyDeviceToHost)); 
+
+
+    /*
+      for (int i = 0; i < kCount; i++) 
       printf("sorted k[i] = %u\n", kVals[i]);
-    
+    */
+    printf("slopes1:\n");
+    printStuff<double>(d_slopes, 2);
     //Distribute elements into their respective buckets
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
+
+
+
+    cudaThreadSynchronize();
+    printf("slopes2:\n");
+    printStuff<double>(d_slopes, 2);
+
+    printf("d_elementToBucket:\n");
+    printStuff<int>(d_elementToBucket, 10);
+
+    printf("d_bucketCount:\n");
+    printStuff<uint>(d_bucketCount, 10);
+
+
+
+
     findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kVals, kCount, kthBucketScanner, kthBuckets);
 
     //we must update K since we have reduced the problem size to elements in the kth bucket
@@ -907,3 +964,4 @@ namespace BucketMultiselect{
   }
 
 }
+

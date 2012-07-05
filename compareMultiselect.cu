@@ -171,8 +171,8 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
       for (m = 0; m < kCount; m++)
         if(algorithmsToTest[j])
           if(resultsArray[j][i][m] != resultsArray[0][i][m]) {
-            std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test" << i + 1 << " it got "<< resultsArray[j][i];
-            std::cout << "instead of " << resultsArray[0][i][m] << "\n" ;
+            std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test " << i + 1 << ".  It got "<< resultsArray[j][i][m];
+            std::cout << " instead of " << resultsArray[0][i][m] << ".\n" ;
             std::cout << "RESULT:\t";
             PrintFunctions::printBinary(resultsArray[j][i][m]);
             std::cout << "Right:\t";
