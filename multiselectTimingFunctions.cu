@@ -8,11 +8,15 @@ template <typename T>
 };
 
 template <typename T>
-void setupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T * h_vec, T ** d_vec, uint numElements) {
+void setupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T * h_vec, T ** d_vec, results_t<T> ** result, uint numElements, uint kCount) {
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
+
   cudaMalloc(d_vec, numElements * sizeof(T));
   cudaMemcpy(*d_vec, h_vec, numElements * sizeof(T), cudaMemcpyHostToDevice);
+
+  *result = (results_t<T> *) malloc (sizeof (results_t<T>));
+  (*result)->vals = (T *) malloc (kCount * sizeof (T));
 }
 
 template <typename T>
@@ -30,12 +34,11 @@ template<typename T>
 results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kVals, uint kCount) {
 
   T * d_vec;
-  results_t<T> * result = (results_t<T> *) malloc(sizeof (results_t<T>)); 
+  results_t<T> * result;
   float time;
   cudaEvent_t start, stop;
-  result->vals = (T *) malloc (kCount * sizeof (T));
 
-  setupForTiming(start, stop, h_vec, &d_vec, numElements);
+  setupForTiming(start, stop, h_vec, &d_vec, &result, numElements, kCount);
 
   cudaEventRecord(start, 0);
 
@@ -58,14 +61,13 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
 template<typename T>
 results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount) {
   T * d_vec;
-  results_t<T> * result = (results_t<T> *) malloc(sizeof (results_t<T>));
-  result->vals = (T *) malloc (kCount * sizeof (T));
+  results_t<T> * result;
   float time;
   cudaEvent_t start, stop;
   cudaDeviceProp dp;
   cudaGetDeviceProperties(&dp, 0);
 
-  setupForTiming(start, stop, h_vec, &d_vec, numElements);
+  setupForTiming(start, stop, h_vec, &d_vec, &result, numElements, kCount);
  
   cudaEventRecord(start, 0);
 
