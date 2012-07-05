@@ -172,8 +172,18 @@ namespace RandomizedBucketSelect{
 
   }
 
+  inline void fixBigBucket(uint *h_counter, int start, int numSmallBuckets){
+    int sum=0;
+    for(int i=start+numSmallBuckets-1; i>start; i--) {
+      sum+=h_counter[i];
+      h_counter[i]=0;
+    }
+    h_counter[start]+=sum;
+    
+  }
+
   //this function finds the bin containing the kth element we are looking for (works on the host)
-  inline int FindKBucket(uint *d_counter, uint *h_counter, const int numBuckets, const int k, uint * sum){
+  inline int FindKBucket(uint *d_counter, uint *h_counter, const int numBuckets, const int k, uint * sum, int numSmallBuckets=0){
     cudaMemcpy(sum, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
     int Kbucket = 0;
     
@@ -187,7 +197,16 @@ namespace RandomizedBucketSelect{
     else{
       cudaMemcpy(h_counter, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
     }
-  
+
+    if(Kbucket<numSmallBuckets) {
+      fixBigBucket(h_counter, 0, numSmallBuckets);
+      return 0;
+    }
+    else if(Kbucket>numBuckets - numSmallBuckets -1) {
+      fixBigBucket(h_counter, numBuckets - numSmallBuckets, numSmallBuckets);
+      return numBuckets - numSmallBuckets -1;
+    }
+      
     return Kbucket;
   }
 
@@ -529,7 +548,7 @@ namespace RandomizedBucketSelect{
   }
   
   template <typename T>
-  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, T min, T max) {
+  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets) {
       T * d_randoms;
       int endOffset = 22;
       int pivotOffset = (sizeOfSample - endOffset * 2) / (numPivots - 3);
@@ -542,8 +561,8 @@ namespace RandomizedBucketSelect{
       // converts randoms floats into elements from necessary indices
       enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randoms, d_list, sizeOfVector);
 
-      pivots[0] = min;
-      pivots[numPivots-1] = max;
+      pivots[0] = 0;
+      pivots[numPivots-1] = 0;
 
       thrust::device_ptr<T>randoms_ptr(d_randoms);
       thrust::sort(randoms_ptr, randoms_ptr + sizeOfSample);
@@ -553,7 +572,6 @@ namespace RandomizedBucketSelect{
       // set the pivots which are endOffset away from the min and max pivots
       cudaMemcpy (pivots + 1, d_randoms + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
       cudaMemcpy (pivots + numPivots - 2, d_randoms + sizeOfSample - endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[0] = numSmallBuckets / (double) (pivots[1] - pivots[0]);
 
       for (int i = 2; i < numPivots - 2; i++) {
         cudaMemcpy (pivots + i, d_randoms + pivotOffset * (i - 1) + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
@@ -561,7 +579,9 @@ namespace RandomizedBucketSelect{
       }
 
       slopes[numPivots-3] = numSmallBuckets / (double) (pivots[numPivots-2] - pivots[numPivots-3]);
-      slopes[numPivots-2] = numSmallBuckets / (double) (pivots[numPivots-1] - pivots[numPivots-2]);
+
+      slopes[0] = 0;
+      slopes[numPivots-2] = 0;
   
       // for (int i = 0; i < numPivots; i++)
       //  printf("pivots = %lf\n", pivots[i]);
@@ -629,7 +649,12 @@ namespace RandomizedBucketSelect{
         bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
-        atomicInc(sharedBuckets + bucketIndex, length);
+        if (minPivotIndex==0)
+          atomicInc(sharedBuckets + (threadIndex%sharedNumSmallBuckets), length);
+        else if (minPivotIndex==(numPivots -2))
+          atomicInc(sharedBuckets + bucketIndex + (threadIndex%sharedNumSmallBuckets), length);
+        else
+          atomicInc(sharedBuckets + bucketIndex, length);
       }
     }
 
@@ -717,6 +742,7 @@ namespace RandomizedBucketSelect{
     // variables for the randomized selection
     int numPivots = NUM_PIVOTS;
     int sampleSize = MAX_THREADS_PER_BLOCK;
+    int numSmallBuckets = numBuckets / (numPivots-1);
 
     // bucket counters
     int kthBucket, kthBucketCount;
@@ -733,9 +759,10 @@ namespace RandomizedBucketSelect{
     T maximum, minimum;
 
     /// ****STEP 1: Find Min and Max of the whole vector
+    /*
     thrust::device_ptr<T>dev_ptr(d_vector);
     thrust::pair<thrust::device_ptr<T>, thrust::device_ptr<T> > result = thrust::minmax_element(dev_ptr, dev_ptr + length);
-
+    
     minimum = *result.first;
     maximum = *result.second;
 
@@ -750,6 +777,7 @@ namespace RandomizedBucketSelect{
     if(K == length){
       return maximum;
     }		
+    */
 
     //Allocate memory to store bucket counts
     size_t totalBucketSize = numBuckets * sizeof(uint);
@@ -765,7 +793,7 @@ namespace RandomizedBucketSelect{
     T pivots[numPivots];
 
     //Find bucket sizes using a randomized selection
-    generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum);
+    generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets);
     
     //Allocate memories
     double * d_slopes;
@@ -791,10 +819,11 @@ namespace RandomizedBucketSelect{
     //Distribute elements into their respective buckets
     timing(0, 3);  
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
-    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &kthBucketScanner);
+    timing(1, 3);
+
+    kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &kthBucketScanner, numSmallBuckets);
     // kthBucket = FindSmartKBucket(d_bucketCount, h_bucketCount, numBuckets, K, length, &kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
-    timing(1, 3);
 
     printf("randomselect kbucket_count = %d\n", kthBucketCount);
 
@@ -839,15 +868,13 @@ namespace RandomizedBucketSelect{
       int pivotOffset = numBuckets / (numPivots - 1);
       int pivotIndex = kthBucket/pivotOffset;
       int pivotInnerindex = kthBucket - pivotOffset * pivotIndex;
-      minimum = max(minimum, (T) (pivots[pivotIndex] + pivotInnerindex / slopes[pivotIndex])); 
-      maximum = min(maximum, (T) (pivots[pivotIndex] + (pivotInnerindex+1) / slopes[pivotIndex]));
       
       if (newInputLength<33000) {
         thrust::device_ptr<T>newInput_ptr(newInput);
         thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
         cudaMemcpy (&kthValue, newInput + K - 1, sizeof (T), cudaMemcpyDeviceToHost);
       } else
-        kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
+        kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads);
       
       /*
       minimum = max(minimum, minimum + kthBucket/slope);
