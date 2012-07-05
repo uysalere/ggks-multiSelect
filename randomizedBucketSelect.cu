@@ -18,7 +18,6 @@
 #include <thrust/sort.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/random.h>
-#include <thrust/iterator/counting_iterator.h>
 #include <thrust/functional.h>
 
 namespace RandomizedBucketSelect{
@@ -191,30 +190,6 @@ namespace RandomizedBucketSelect{
   
     return Kbucket;
   }
-
-  /*
-  //this function finds the bin containing the kth element we are looking for (works on the host)
-  inline int FindSmartKBucket(uint *d_counter, uint *h_counter, const int num_buckets,  int k, uint * sum){
-    cudaMemcpy(sum, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
-    int Kbucket = 0;
-    int warp_size = 32;
-
-
-    if (*sum<k){
-      while ( (*sum<k) & (Kbucket<num_buckets-1)) {
-        Kbucket++; 
-        if (!((Kbucket-1)%32))
-          cudaMemcpy(h_counter + Kbucket, d_counter + Kbucket, warp_size * sizeof(uint), cudaMemcpyDeviceToHost);
-        *sum += h_counter[Kbucket];
-      }
-    }
-    else{
-      cudaMemcpy(h_counter, d_counter, sizeof(uint), cudaMemcpyDeviceToHost);
-    }
-  
-    return Kbucket;
-  }
-  */
 
   template <typename T>
   __global__ void GetKvalue(T* d_vector, int * d_bucket, const int Kbucket, const int n, T* Kvalue, int offset )
@@ -729,98 +704,6 @@ namespace RandomizedBucketSelect{
    atomicAdd(bucketCount + i*1024 + threadIndex, sharedBuckets[i*1024 + threadIndex]);
     */
   }
-  
-  //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
-  template <typename T>
-  __global__ void assignSmartBucket1(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, int* elementToBucket, uint* bucketCount, int offset){
-    int index = blockDim.x * blockIdx.x + threadIdx.x;
-    int threadIndex = threadIdx.x;  
-    __shared__ T sharedPivots[NUM_PIVOTS];
-
-    if(threadIndex < numPivots) 
-      sharedPivots[threadIndex] = pivots[threadIndex];
-    
-    syncthreads();
-    //assigning elements to buckets and incrementing the bucket counts
-    if(index < length) {
-      int i;
-
-      for(i = index; i < length; i += offset) {
-        /*
-        /// binary search
-        T num = d_vector[i];
-        int minPivotIndex = 0;
-        int maxPivotIndex = numPivots-1;
-        int midPivotIndex;
-
-        // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
-        while (maxPivotIndex >= minPivotIndex) {
-          midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
-          if (sharedPivots[midPivotIndex+1] <= num)
-            minPivotIndex = midPivotIndex+1;
-          else if (sharedPivots[midPivotIndex] > num)
-            maxPivotIndex = midPivotIndex;
-          else
-            break;
-        }
-        elementToBucket[i] = midPivotIndex;
-        */
-
-
-      }
-    }
-  }
-
-  //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
-  template <typename T>
-  __global__ void assignSmartBucket2(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, int* elementToBucket, uint* bucketCount, int offset){
-  
-    int index = blockDim.x * blockIdx.x + threadIdx.x;
-    int bucketIndex;
-    int threadIndex = threadIdx.x;  
-    
-    //variables in shared memory for fast access
-    __shared__ int sharedNumSmallBuckets;
-    sharedNumSmallBuckets = numBuckets / (numPivots-1);
-
-    extern __shared__ uint sharedBuckets[];
-    __shared__ double sharedSlopes[NUM_PIVOTS-1];
-    __shared__ T sharedPivots[NUM_PIVOTS];
-
-    //reading bucket counts into shared memory where increments will be performed
-    for(int i=0; i < (numBuckets/1024); i++) 
-      if(threadIndex < numBuckets) 
-        sharedBuckets[i*1024+threadIndex] = 0;
-
-    if(threadIndex < numPivots) {
-      sharedPivots[threadIndex] = pivots[threadIndex];
-      if(threadIndex < (numPivots-1))
-        sharedSlopes[threadIndex] = slopes[threadIndex];
-    }
-    syncthreads();
-
-    //assigning elements to buckets and incrementing the bucket counts
-    if(index < length)    {
-      int i;
-
-      for(i = index; i < length; i += offset){
-        T num = d_vector[i];
-        int midPivotIndex = elementToBucket[i];
-
-        bucketIndex = (midPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[midPivotIndex]) * sharedSlopes[midPivotIndex]);
-        elementToBucket[i] = bucketIndex;
-        // hashmap implementation set[bucketindex]=add.i;
-        atomicInc(sharedBuckets + bucketIndex, length);
-      }
-    }
-
-    syncthreads();
-
-    //reading bucket counts from shared memory back to global memory
-    for(int i=0; i < (numBuckets/1024); i++) 
-      if(threadIndex < numBuckets) 
-        atomicAdd(bucketCount + i*1024 + threadIndex, sharedBuckets[i*1024 + threadIndex]);
-  }
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
@@ -978,31 +861,6 @@ namespace RandomizedBucketSelect{
 
 
     return kthValue;
-  }
-
-  /**************************************************************************/
-  /**************************************************************************/
-  //THIS IS THE BUCKETSELECT FUNCTION WRAPPER THAT CHOOSES THE CORRECT VERSION
-  //OF BUCKET SELECT TO RUN BASED ON THE INPUT LENGTH
-  /**************************************************************************/
-  template <typename T>
-  T bucketSelectWrapper(T* d_vector, int length, int K, int blocks, int threads)
-  {
-    T kthValue;
-    //change K to be the kth smallest
-    K = length - K + 1;
-
-    if(length <= CUTOFF_POINT)
-      {
-        kthValue = phaseTwo(d_vector, length, K, blocks, threads);
-        return kthValue;
-      }
-    else
-      {
-        kthValue = phaseOne(d_vector, length, K, blocks, threads);
-        return kthValue;
-      }
-
   }
 
 

@@ -195,7 +195,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
 
 template<typename T>
 void runTests(uint generateType, char* fileName,uint startPower, uint stopPower, uint timesToTestEachK = 100){
-  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1,0};
+  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1,1};
   uint size;
   uint i;
   uint arrayOfKs[25];

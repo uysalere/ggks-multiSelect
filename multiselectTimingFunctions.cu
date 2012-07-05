@@ -14,7 +14,16 @@ void setupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T **d_vec, T* h_vec, 
   cudaMalloc(d_vec, size * sizeof(T));
   cudaMemcpy(*d_vec, h_vec, size * sizeof(T), cudaMemcpyHostToDevice);
   *result = (results_t<T> *) malloc(sizeof(results_t<T>));
-  (*result)->vals = (T *) malloc (kCount * sizeof (T));
+}
+
+template<typename T>
+void wrapupForTiming(cudaEvent_t &start, cudaEvent_t &stop, T* d_vec, results_t<T> *result, float time, T * value) {
+  cudaFree(d_vec);
+  cudaEventDestroy(start);
+  cudaEventDestroy(stop);
+  result->time = time;
+  result->vals = value;
+  //   cudaDeviceSynchronize();
 }
 
 template<typename T>
@@ -68,6 +77,7 @@ results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, 
   float time;
   cudaEvent_t start, stop;
   cudaDeviceProp dp;
+  T* result_vals = (T *) malloc (kCount * sizeof (T));
 
   cudaGetDeviceProperties(&dp,0);
 
@@ -76,13 +86,16 @@ results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, 
 
   cudaEventRecord(start, 0);
 
-  BucketSelect::bucketMultiselectWrapper(d_vec, numElements, kVals, kCount, result->vals, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+    printf("start here\n");
+  // void bucketMultiselectWrapper (T * d_vector, int length, uint * kVals_ori, uint kCount, T * outputs, int blocks, int threads) { 
+  BucketMultiselect::bucketMultiselectWrapper(d_vec, numElements, kVals, kCount, result_vals, dp.multiProcessorCount, dp.maxThreadsPerBlock);
  
+    printf("start here\n");
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&time,start,stop);
 
 
-  wrapupForTiming(start, stop, d_vec, result, time);
+  wrapupForTiming(start, stop, d_vec, result, time, result_vals);
   return result;
 }
