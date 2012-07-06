@@ -504,6 +504,9 @@ namespace NaiveBucketMultiselect{
     cudaFree(d_bucketCount); 
     cudaFree(newInput); 
     cudaFree(count);
+    cudaFree(d_kIndices);
+    cudaFree(d_kVals);
+    cudaFree(d_markedBuckets);
     free(h_bucketCount);
 
     return 0;
