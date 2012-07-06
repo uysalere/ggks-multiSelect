@@ -6,20 +6,6 @@
 #include <thrust/sort.h>
 #include <thrust/transform_reduce.h>
 
-
-template <typename T>
-void printStuff (T * d_list, int size) {
-  T * p = (T *) malloc (sizeof (T) * size);
-
-  cudaMemcpy (p, d_list, sizeof(T)* size, cudaMemcpyDeviceToHost);
-
-  for (int i = 0; i < size; i++)
-    // printf("%lf\n", *(p+i));
-    std::cout << *(p+i) << "\n";
-  
-  free(p);
-}
-
 namespace BucketMultiselect{
   using namespace std;
 
@@ -160,25 +146,33 @@ namespace BucketMultiselect{
 
   //copy elements in the kth bucket to a new array
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, int* elementToBucket, int * buckets, const int numBuckets, T* newArray, uint* count, int offset){
+  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, uint * bucketStart, const int numBuckets, T* newArray, uint* counter, uint offset){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int threadidx = threadIdx.x;
+
+    extern __shared__ uint sharedStarts[];
+    if(threadidx < numBuckets)
+      sharedStarts[threadidx]=bucketStart[threadidx];
+    syncthreads();
 
     if(idx < length){
       for(int i=idx; i<length; i+=offset)
         //copy elements in the kth buckets to the new array
         for (int j = 0; j < numBuckets; j++)
-          if(elementToBucket[i] == buckets[j])
-            newArray[atomicInc(count, length)] = d_vector[i];
+          if(elementToBucket[i] == buckets[j]) 
+            *(newArray + sharedStarts[j] + atomicInc(counter+j, length)) = d_vector[i];
+          
     }
 
   }
 
   //this function finds the bin containing the kth element we are looking for (works on the host)
-  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, int * sums, int * kthBuckets){
+  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, uint * sums, uint * kthBuckets){
     CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount, numBuckets * sizeof(uint), cudaMemcpyDeviceToHost));
-    printf("h_bucketCount[0] = %u\n", h_bucketCount[0]);
+    /*
     printf("h_bucketCount[10] = %u\n", h_bucketCount[10]);
     printf("h_bucketCount[%d] = %u\n", numBuckets -1, h_bucketCount[numBuckets-1]);
+    */
     int kBucket = 0;
     int k;
     int sum=h_bucketCount[0];
@@ -574,7 +568,7 @@ namespace BucketMultiselect{
   
   //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
   template <typename T>
-  __global__ void assignSmartBucket(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, int* elementToBucket, uint* bucketCount, int offset){
+  __global__ void assignSmartBucket(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, uint* elementToBucket, uint* bucketCount, int offset){
   
     int index = blockDim.x * blockIdx.x + threadIdx.x;
     int bucketIndex;
@@ -710,32 +704,15 @@ namespace BucketMultiselect{
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
-  T phaseOneR(T* d_vector, int length, uint * kVals, int kCount, T * output, int blocks, int threads, int pass = 0){
-    //declaring variables for kernel launches
-    int threadsPerBlock = threads;
-    int numBlocks = blocks;
-    int numBuckets = 4096;
-    int offset = blocks * threads;
+  T phaseOneR(T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int pass = 0){    
+    /// ***********************************************************
+    /// ****STEP 1: Find Min and Max of the whole vector
+    /// ****We don't need to go through the rest of the algorithm if its flat
+    /// ***********************************************************
 
-    // variables for the randomized selection
-    int numPivots = NUM_PIVOTS;
-    int sampleSize = MAX_THREADS_PER_BLOCK;
-
-    // bucket counters
-    int kthBuckets[kCount], kthBucketScanner[kCount], kIndices[kCount], markedBuckets[kCount], numMarkedBuckets, elementsInBucketsSoFar;
-    int * d_markedBuckets;
-    for (int i=0; i<kCount; i++) {
-      kthBucketScanner[i] = 0;
-      kIndices[i] = i;
-    }
-    // variable to store the end result
-    int newInputLength;
-    T* newInput;
-      
     //find max and min with thrust
     T maximum, minimum;
 
-    /// ****STEP 1: Find Min and Max of the whole vector
     thrust::device_ptr<T>dev_ptr(d_vector);
     thrust::pair<thrust::device_ptr<T>, thrust::device_ptr<T> > result = thrust::minmax_element(dev_ptr, dev_ptr + length);
 
@@ -744,7 +721,7 @@ namespace BucketMultiselect{
 
     //if the max and the min are the same, then we are done
     if(maximum == minimum) {
-      for (int i=0; i<kCount; i++) 
+      for (int i=0; i<kListCount; i++) 
         output[i] = minimum;
       
       return 0;
@@ -760,130 +737,151 @@ namespace BucketMultiselect{
     }	
     */	
 
-    //Allocate memory to store bucket counts
-    size_t size = length * sizeof(int);
-    uint * count; 
+    /// ***********************************************************
+    /// ****STEP 2: Declare variables and allocate memory
+    /// **** Declare Variables
+    /// ***********************************************************
 
-    size_t totalBucketSize = numBuckets * sizeof(uint);
-    uint * h_bucketCount = (uint*)malloc(totalBucketSize);
-    uint * d_bucketCount; //array showing the number of elements in each bucket
-    CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
-    int * d_elementToBucket; //array showing what bucket every element is in
+    //declaring variables for kernel launches
+    int threadsPerBlock = threads;
+    int numBlocks = blocks;
+    int numBuckets = 4096;
+    int offset = blocks * threads;
+
+    // variables for the randomized selection
+    int numPivots = NUM_PIVOTS;
+    int sampleSize = MAX_THREADS_PER_BLOCK;
+
+    // pivot vars
+    double slopes[numPivots - 1];
+    double * d_slopes;
+    T pivots[numPivots];
+    T * d_pivots;
+
+    //Allocate memory to store bucket assignments
+    size_t size = length * sizeof(uint);
+    uint * d_elementToBucket; //array showing what bucket every element is in
     CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
 
-    /// ****STEP 2: Generate Pivots and Slopes
-    //Declare slopes and pivots
-    double slopes[numPivots - 1];
-    T pivots[numPivots];
+    //Allocate memory to store bucket counts
+    size_t totalBucketSize = numBuckets * sizeof(uint);
+    uint h_bucketCount[totalBucketSize]; //array showing the number of elements in each bucket
+    uint * d_bucketCount; 
+    CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
+    setToAllZero(d_bucketCount, numBuckets);
+
+    // array of kth buckets
+    int numMarkedBuckets;
+    uint * d_kList; 
+    uint kthBuckets[kListCount]; 
+    uint kthBucketScanner[kListCount]; 
+    uint kIndices[kListCount];
+    uint * d_kIndices;
+    uint markedBuckets[kListCount];
+    uint * d_markedBuckets; 
+    uint markedBucketStart[kListCount];
+    uint * d_markedBucketStart;
+    uint * d_markedBucketIndexCounter;    
+    CUDA_CALL(cudaMalloc(&d_kList, kListCount * sizeof(uint)));
+    CUDA_CALL(cudaMalloc(&d_kIndices, kListCount * sizeof (uint)));
+    timing(0, 1);
+    for (int i=0; i<kListCount; i++) {
+      kthBucketScanner[i] = 0;
+      kIndices[i] = i;
+    }
+    timing(1, 1);
+
+    // variable to store the end result
+    int newInputLength;
+    T* newInput;
+
+    /// ***********************************************************
+    /// ****STEP 3: Sort the klist
+    /// and keep the old index
+    /// ***********************************************************
+
+    CUDA_CALL(cudaMemcpy(d_kIndices, kIndices, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy(d_kList, kList, kListCount * sizeof (uint), cudaMemcpyHostToDevice)); 
+
+    // sort the given indices
+    thrust::device_ptr<uint>kList_ptr(d_kList);
+    thrust::device_ptr<uint>kIndices_ptr(d_kIndices);
+    thrust::sort_by_key(kList_ptr, kList_ptr + kListCount, kIndices_ptr);
+
+    CUDA_CALL(cudaMemcpy(kIndices, d_kIndices, kListCount * sizeof (uint), cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(kList, d_kList, kListCount * sizeof (uint), cudaMemcpyDeviceToHost)); 
+
+    /// ***********************************************************
+    /// ****STEP 4: Generate Pivots and Slopes
+    /// Declare slopes and pivots
+    /// ***********************************************************
+    CUDA_CALL(cudaMalloc(&d_slopes, (numPivots - 1) * sizeof(double)));
+    CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
 
     //Find bucket sizes using a randomized selection
     generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum);
     
-    printf("cpu slopes:\n");
-    for (int i = 0; i < 10; i++)
-      printf("%lf\n", slopes[i]);
-
-    //Allocate memories
-    double * d_slopes;
-    CUDA_CALL(cudaMalloc(&d_slopes, (numPivots - 1) * sizeof(double)));
     CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));  
-
-
-    T * d_pivots;
-    CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
     CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice));
 
-    //Set the bucket count vector to all zeros
-    CUDA_CALL(cudaMalloc(&count, sizeof(uint)));
-    setToAllZero(d_bucketCount, numBuckets);
-
-    /*
-    for (int i = 0; i < kCount; i++) 
-      printf("k[i] = %u\n", kVals[i]);
-    */
-    int * d_kIndices;
-    uint * d_kVals;
-    CUDA_CALL(cudaMalloc(&d_kIndices, kCount * sizeof (int)));
-    CUDA_CALL(cudaMemcpy(d_kIndices, kIndices, kCount * sizeof (int), cudaMemcpyHostToDevice));
-    CUDA_CALL(cudaMalloc(&d_kVals, kCount * sizeof (uint)));
-    CUDA_CALL(cudaMemcpy(d_kVals, kVals, kCount * sizeof (uint), cudaMemcpyHostToDevice)); 
-
-    // sort the given indices
-    thrust::device_ptr<uint>kVals_ptr(d_kVals);
-    thrust::device_ptr<int>kIndices_ptr(d_kIndices);
-    thrust::sort_by_key(kVals_ptr, kVals_ptr + kCount, kIndices_ptr);
-
-    CUDA_CALL(cudaMemcpy(kIndices, d_kIndices, kCount * sizeof (int), cudaMemcpyDeviceToHost));
-    CUDA_CALL(cudaMemcpy(kVals, d_kVals, kCount * sizeof (uint), cudaMemcpyDeviceToHost)); 
-
-
-    /*
-      for (int i = 0; i < kCount; i++) 
-      printf("sorted k[i] = %u\n", kVals[i]);
-    */
+    /// ***********************************************************
+    /// ****STEP 5: Assign elements to buckets
+    /// 
+    /// ***********************************************************
 
     //Distribute elements into their respective buckets
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
 
-
-
-    cudaThreadSynchronize();
-    printf("slopes2:\n");
-    printStuff<double>(d_slopes, 2);
-
-    printf("d_elementToBucket:\n");
-    printStuff<int>(d_elementToBucket, 10);
-
-    printf("d_bucketCount:\n");
-    printStuff<uint>(d_bucketCount, 10);
-
-
-
-
-    findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kVals, kCount, kthBucketScanner, kthBuckets);
+    /// ***********************************************************
+    /// ****STEP 6: Find the kth buckets
+    /// and their respective update indices
+    /// ***********************************************************
+    findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets);
 
     //we must update K since we have reduced the problem size to elements in the kth bucket
     // get the index of the first element
     // add the number of elements
-    kVals[0] = kVals[0] - kthBucketScanner[0];
-    elementsInBucketsSoFar = 0;
+    kList[0] = kList[0] - kthBucketScanner[0];
     numMarkedBuckets = 1;
     markedBuckets[0] = kthBuckets[0];
-
-
-    printf("randomselect total kbucket_count = %u\n", elementsInBucketsSoFar);
-    for (int i = 1; i < kCount; i++) {
+    markedBucketStart[0]=0;
+    for (int i = 1; i < kListCount; i++) {
       if (kthBuckets[i] != kthBuckets[i-1]) {
-        elementsInBucketsSoFar += h_bucketCount[kthBuckets[i-1]];
+        markedBucketStart[i] = markedBucketStart[i-1] + h_bucketCount[kthBuckets[i-1]];
         markedBuckets[numMarkedBuckets] = kthBuckets[i];
         numMarkedBuckets++;
       }
-      kVals[i] = elementsInBucketsSoFar + kVals[i] - kthBucketScanner[i];
+      kList[i] = markedBucketStart[i] + kList[i] - kthBucketScanner[i];
     }
 
-
-    elementsInBucketsSoFar += h_bucketCount[kthBuckets[kCount-1]];
-
-    printf("kthBucket[0] = %d\n", kthBuckets[0]);
-    printf("randomselect total kbucket_count = %u\n", elementsInBucketsSoFar);
-    printf("num marked buckets = %d\n", numMarkedBuckets);
-    printf("markedBucket[0] = %d\n", markedBuckets[0]);
-
     //store the length of the newly copied elements
-    newInputLength = elementsInBucketsSoFar;
+    newInputLength = markedBucketStart[numMarkedBuckets-1] + h_bucketCount[kthBuckets[kListCount-1]];
+    printf("randomselect total kbucket_count = %d\n", newInputLength);
 
-    //copy elements in the kth buckets to a new array
+    /// ***********************************************************
+    /// ****STEP 7: Copy the kth buckets
+    /// only marked ones
+    /// ***********************************************************
+    // allocate memories
     CUDA_CALL(cudaMalloc(&newInput, newInputLength * sizeof(T)));
-    setToAllZero(count, 1);
+    CUDA_CALL(cudaMalloc(&d_markedBuckets, numMarkedBuckets * sizeof(uint)));
+    CUDA_CALL(cudaMalloc(&d_markedBucketStart, numMarkedBuckets * sizeof(uint)));
+    CUDA_CALL(cudaMalloc(&d_markedBucketIndexCounter, numMarkedBuckets * sizeof(uint)));
 
-    CUDA_CALL(cudaMalloc(&d_markedBuckets, numMarkedBuckets * sizeof(int)));
-    CUDA_CALL(cudaMemcpy(d_markedBuckets, markedBuckets, numMarkedBuckets * sizeof(int), cudaMemcpyHostToDevice));
+    //copy marked bucket stuff into device
+    CUDA_CALL(cudaMemcpy(d_markedBuckets, markedBuckets, numMarkedBuckets * sizeof(uint), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy(d_markedBucketStart, markedBucketStart, numMarkedBuckets * sizeof(uint), cudaMemcpyHostToDevice));
+    setToAllZero(d_markedBucketIndexCounter, numMarkedBuckets);
 
-    // __global__ void copyElement(T* d_vector, int length, int* elementToBucket, int * buckets, int kCount, T* newArray, uint* count, int offset){
-    copyElement<<<numBlocks, threadsPerBlock>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, count, offset);
+    copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, d_markedBucketStart, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset);
+
+    /// ***********************************************************
+    /// ****STEP 8: Sort
+    /// and finito
+    /// ***********************************************************
 
     //if we only copied one element, then we are done
-/*
+    /*
     if(newInputLength == 1){
       thrust::device_ptr<T>new_ptr(newInput);
       kthValue = new_ptr[0];
@@ -919,10 +917,10 @@ namespace BucketMultiselect{
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
     
-    printf("newInputLength = %d\n", newInputLength);
-    for (int i = 0; i < kCount; i++) {
-      printf("kVals[%d] = %u\n", i, kVals[i]);
-      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kVals[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+    //printf("newInputLength = %d\n", newInputLength);
+    for (int i = 0; i < kListCount; i++) {
+      //printf("kList[%d] = %u\n", i, kList[i]);
+      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
     }
     
     /*
@@ -940,31 +938,35 @@ namespace BucketMultiselect{
   cudaFree(d_elementToBucket);  
   cudaFree(d_bucketCount); 
   cudaFree(newInput); 
-  cudaFree(count);
   cudaFree(d_slopes); 
+  cudaFree(d_kIndices); 
+  cudaFree(d_kList); 
+  cudaFree(d_markedBuckets); 
+  cudaFree(d_markedBucketStart); 
+  cudaFree(d_markedBucketIndexCounter); 
   cudaFree(d_pivots);
-  free(h_bucketCount);
 
   return 0;
 
   }
 
   template <typename T>
-  T bucketMultiselectWrapper (T * d_vector, int length, uint * kVals_ori, int kCount, T * outputs, int blocks, int threads) { 
-    uint kVals[kCount];
-    for(int i=0; i<kCount ; i++)
-      kVals[i] = length - kVals_ori[i] + 1;
-
+  T bucketMultiselectWrapper (T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads) { 
+    uint kList[kListCount];
+    for(int i=0; i<kListCount ; i++)
+      kList[i] = length - kList_ori[i] + 1;
+    /*
     printf("start here\n");
     printf("k-length: %d\n", length);
-    for(int i=0; i<kCount ; i++)
-      printf("k-%d: %d\n", i, kVals[i]);
+    for(int i=0; i<kListCount ; i++)
+      printf("k-%d: %d\n", i, kList[i]);
+    */
 
     //  if(length <= CUTOFF_POINT) 
-    //  phaseTwo(d_vector, length, kVals, kCount, outputs, blocks, threads);
+    //  phaseTwo(d_vector, length, kList, kListCount, outputs, blocks, threads);
     //  else 
-    phaseOneR(d_vector, length, kVals, kCount, outputs, blocks, threads);
-    // void phaseOneR(T* d_vector, int length, uint * kVals, uint kCount, T * outputs, int blocks, int threads, int pass = 0){
+    phaseOneR(d_vector, length, kList, kListCount, outputs, blocks, threads);
+    // void phaseOneR(T* d_vector, int length, uint * kList, uint kListCount, T * outputs, int blocks, int threads, int pass = 0){
 
     return 0;
   }
