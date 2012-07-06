@@ -206,7 +206,7 @@ void runTests(uint generateType, char* fileName,uint startPower, uint stopPower,
     arrayOfKs[0]= 2;
     arrayOfKs[1] = .01 * size;
     arrayOfKs[2] = .025 * size;
-    for(i = 1; i <= 64; i++)
+    for(i = 1; i <= num - 6; i++)
       arrayOfKs[i + 2] = ((1 / (float) (num - 5)) * i) * size;
     
     arrayOfKs[num-3] = .975 * size;
