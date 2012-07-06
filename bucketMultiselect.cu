@@ -160,7 +160,7 @@ namespace BucketMultiselect{
 
   //copy elements in the kth bucket to a new array
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, int* elementToBucket, int * buckets, int numBuckets, T* newArray, uint* count, int offset){
+  __global__ void copyElement(T* d_vector, int length, int* elementToBucket, int * buckets, const int numBuckets, T* newArray, uint* count, int offset){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if(idx < length){
@@ -723,13 +723,15 @@ namespace BucketMultiselect{
 
     // bucket counters
     int kthBuckets[kCount], kthBucketScanner[kCount], kIndices[kCount], markedBuckets[kCount], numMarkedBuckets, elementsInBucketsSoFar;
-    for (int i=0; i<kCount; i++)
+    int * d_markedBuckets;
+    for (int i=0; i<kCount; i++) {
       kthBucketScanner[i] = 0;
-
+      kIndices[i] = i;
+    }
     // variable to store the end result
     int newInputLength;
     T* newInput;
-    
+      
     //find max and min with thrust
     T maximum, minimum;
 
@@ -742,10 +744,9 @@ namespace BucketMultiselect{
 
     //if the max and the min are the same, then we are done
     if(maximum == minimum) {
-      for (int i=0; i<kCount; i++) {
+      for (int i=0; i<kCount; i++) 
         output[i] = minimum;
-        kIndices[i] = i;
-      }
+      
       return 0;
     }
 
@@ -868,15 +869,18 @@ namespace BucketMultiselect{
     printf("num marked buckets = %d\n", numMarkedBuckets);
     printf("markedBucket[0] = %d\n", markedBuckets[0]);
 
-    //copy elements in the kth buckets to a new array
-    CUDA_CALL(cudaMalloc(&newInput, elementsInBucketsSoFar * sizeof(T)));
-    setToAllZero(count, 1);
-
-    // __global__ void copyElement(T* d_vector, int length, int* elementToBucket, int * buckets, int kCount, T* newArray, uint* count, int offset){
-    copyElement<<<numBlocks, threadsPerBlock>>>(d_vector, length, d_elementToBucket, markedBuckets, numMarkedBuckets, newInput, count, offset);
-
     //store the length of the newly copied elements
     newInputLength = elementsInBucketsSoFar;
+
+    //copy elements in the kth buckets to a new array
+    CUDA_CALL(cudaMalloc(&newInput, newInputLength * sizeof(T)));
+    setToAllZero(count, 1);
+
+    CUDA_CALL(cudaMalloc(&d_markedBuckets, numMarkedBuckets * sizeof(int)));
+    CUDA_CALL(cudaMemcpy(d_markedBuckets, markedBuckets, numMarkedBuckets * sizeof(int), cudaMemcpyHostToDevice));
+
+    // __global__ void copyElement(T* d_vector, int length, int* elementToBucket, int * buckets, int kCount, T* newArray, uint* count, int offset){
+    copyElement<<<numBlocks, threadsPerBlock>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, count, offset);
 
     //if we only copied one element, then we are done
 /*
