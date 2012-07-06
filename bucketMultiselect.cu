@@ -703,6 +703,7 @@ namespace BucketMultiselect{
     /// ****We don't need to go through the rest of the algorithm if its flat
     /// ***********************************************************
 
+    timing(0, 1);
     //find max and min with thrust
     T maximum, minimum;
 
@@ -730,11 +731,13 @@ namespace BucketMultiselect{
     }	
     */	
 
+    timing(1, 1);
     /// ***********************************************************
     /// ****STEP 2: Declare variables and allocate memory
     /// **** Declare Variables
     /// ***********************************************************
 
+    timing(0, 2);
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
     int numBlocks = blocks;
@@ -781,17 +784,18 @@ namespace BucketMultiselect{
       kthBucketScanner[i] = 0;
       kIndices[i] = i;
     }
-    timing(1, 1);
 
     // variable to store the end result
     int newInputLength;
     T* newInput;
+    timing(1, 2);
 
     /// ***********************************************************
     /// ****STEP 3: Sort the klist
     /// and keep the old index
     /// ***********************************************************
 
+    timing(0, 3);
     CUDA_CALL(cudaMemcpy(d_kIndices, kIndices, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(d_kList, kList, kListCount * sizeof (uint), cudaMemcpyHostToDevice)); 
 
@@ -803,10 +807,12 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMemcpy(kIndices, d_kIndices, kListCount * sizeof (uint), cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaMemcpy(kList, d_kList, kListCount * sizeof (uint), cudaMemcpyDeviceToHost)); 
 
+    timing(1, 3);
     /// ***********************************************************
     /// ****STEP 4: Generate Pivots and Slopes
     /// Declare slopes and pivots
     /// ***********************************************************
+    timing(0, 4);
     CUDA_CALL(cudaMalloc(&d_slopes, (numPivots - 1) * sizeof(double)));
     CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
 
@@ -815,21 +821,27 @@ namespace BucketMultiselect{
     
     CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));  
     CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice));
+    timing(1, 4);
 
     /// ***********************************************************
     /// ****STEP 5: Assign elements to buckets
     /// 
     /// ***********************************************************
 
+    timing(0, 5);
     //Distribute elements into their respective buckets
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
+    timing(1, 5);
 
     /// ***********************************************************
     /// ****STEP 6: Find the kth buckets
     /// and their respective update indices
     /// ***********************************************************
+    timing(0, 6);
     findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets);
+    timing(1, 6);
 
+    timing(0, 7);
     //we must update K since we have reduced the problem size to elements in the kth bucket
     // get the index of the first element
     // add the number of elements
@@ -848,12 +860,14 @@ namespace BucketMultiselect{
 
     //store the length of the newly copied elements
     newInputLength = elementsInMarkedBucketsSoFar + h_bucketCount[kthBuckets[kListCount-1]];
+    timing(1, 7);
     printf("randomselect total kbucket_count = %d\n", newInputLength);
 
     /// ***********************************************************
     /// ****STEP 7: Copy the kth buckets
     /// only marked ones
     /// ***********************************************************
+    timing(0, 8);
     // allocate memories
     CUDA_CALL(cudaMalloc(&newInput, newInputLength * sizeof(T)));
     CUDA_CALL(cudaMalloc(&d_markedBuckets, numMarkedBuckets * sizeof(uint)));
@@ -862,8 +876,11 @@ namespace BucketMultiselect{
     //copy marked bucket stuff into device
     CUDA_CALL(cudaMemcpy(d_markedBuckets, markedBuckets, numMarkedBuckets * sizeof(uint), cudaMemcpyHostToDevice));
     setToAllZero(d_markedBucketIndexCounter, 1);
+    timing(1, 8);
+    timing(0, 9);
 
     copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset);
+    timing(1, 9);
 
     /// ***********************************************************
     /// ****STEP 8: Sort
@@ -903,6 +920,7 @@ namespace BucketMultiselect{
     */
     //  if (newInputLength<33000) {
 
+    timing(0, 10);
     // sort the vector
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
@@ -912,6 +930,7 @@ namespace BucketMultiselect{
       //printf("kList[%d] = %u\n", i, kList[i]);
       CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
     }
+    timing(1, 10);
     
     /*
       } else
