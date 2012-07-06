@@ -1,0 +1,1 @@
+basic idea: store two sets of counts, while we are getting one set of counts store the next set in the alternativeCounts.

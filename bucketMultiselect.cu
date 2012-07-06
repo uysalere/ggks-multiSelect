@@ -741,7 +741,7 @@ namespace BucketMultiselect{
     maximum = *result.second;
 
     //if the max and the min are the same, then we are done
-    if(maximum == minimum){
+    if(maximum == minimum) {
       for (int i=0; i<kCount; i++) {
         output[i] = minimum;
         kIndices[i] = i;
@@ -802,15 +802,10 @@ namespace BucketMultiselect{
     */
     int * d_kIndices;
     uint * d_kVals;
-    CUDA_CALL(cudaMalloc(&d_kIndices, kCount));
+    CUDA_CALL(cudaMalloc(&d_kIndices, kCount * sizeof (int)));
     CUDA_CALL(cudaMemcpy(d_kIndices, kIndices, kCount * sizeof (int), cudaMemcpyHostToDevice));
-    CUDA_CALL(cudaMalloc(&d_kVals, kCount));
+    CUDA_CALL(cudaMalloc(&d_kVals, kCount * sizeof (uint)));
     CUDA_CALL(cudaMemcpy(d_kVals, kVals, kCount * sizeof (uint), cudaMemcpyHostToDevice)); 
-
-
-    printf("slopes0:\n");
-    printStuff<double>(d_slopes, 2);
-
 
     // sort the given indices
     thrust::device_ptr<uint>kVals_ptr(d_kVals);
@@ -825,8 +820,7 @@ namespace BucketMultiselect{
       for (int i = 0; i < kCount; i++) 
       printf("sorted k[i] = %u\n", kVals[i]);
     */
-    printf("slopes1:\n");
-    printStuff<double>(d_slopes, 2);
+
     //Distribute elements into their respective buckets
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
 
@@ -851,19 +845,23 @@ namespace BucketMultiselect{
     // get the index of the first element
     // add the number of elements
     kVals[0] = kVals[0] - kthBucketScanner[0];
-    elementsInBucketsSoFar=0;
-    numMarkedBuckets=1;
-    markedBuckets[0]=kthBuckets[0];
+    elementsInBucketsSoFar = 0;
+    numMarkedBuckets = 1;
+    markedBuckets[0] = kthBuckets[0];
+
+
     printf("randomselect total kbucket_count = %u\n", elementsInBucketsSoFar);
-    for (int i=1; i<kCount; i++) {
+    for (int i = 1; i < kCount; i++) {
       if (kthBuckets[i] != kthBuckets[i-1]) {
-        elementsInBucketsSoFar+=h_bucketCount[kthBuckets[i-1]];
-        markedBuckets[numMarkedBuckets]=kthBuckets[i];
+        elementsInBucketsSoFar += h_bucketCount[kthBuckets[i-1]];
+        markedBuckets[numMarkedBuckets] = kthBuckets[i];
         numMarkedBuckets++;
       }
-      kVals[i] = elementsInBucketsSoFar+ kVals[i] - kthBucketScanner[i];
+      kVals[i] = elementsInBucketsSoFar + kVals[i] - kthBucketScanner[i];
     }
-    elementsInBucketsSoFar+=h_bucketCount[kthBuckets[kCount-1]];
+
+
+    elementsInBucketsSoFar += h_bucketCount[kthBuckets[kCount-1]];
 
     printf("kthBucket[0] = %d\n", kthBuckets[0]);
     printf("randomselect total kbucket_count = %u\n", elementsInBucketsSoFar);
@@ -916,9 +914,13 @@ namespace BucketMultiselect{
     // sort the vector
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
-    for (int i = 0; i < kCount; i++)
+    
+    printf("newInputLength = %d\n", newInputLength);
+    for (int i = 0; i < kCount; i++) {
+      printf("kVals[%d] = %u\n", i, kVals[i]);
       CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kVals[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
-
+    }
+    
     /*
       } else
       kthValue = phaseTwo(newInput,newInputLength, K, blocks, threads,maximum, minimum);
