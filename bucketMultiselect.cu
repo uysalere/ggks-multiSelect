@@ -146,22 +146,15 @@ namespace BucketMultiselect{
 
   //copy elements in the kth bucket to a new array
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, uint * bucketStart, const int numBuckets, T* newArray, uint* counter, uint offset){
+  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, uint offset){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int threadidx = threadIdx.x;
 
-    extern __shared__ uint sharedStarts[];
-    if(threadidx < numBuckets)
-      sharedStarts[threadidx]=bucketStart[threadidx];
-    syncthreads();
-
-    if(idx < length){
+    if(idx < length) {
       for(int i=idx; i<length; i+=offset)
         //copy elements in the kth buckets to the new array
         for (int j = 0; j < numBuckets; j++)
-          if(elementToBucket[i] == buckets[j]) 
-            *(newArray + sharedStarts[j] + atomicInc(counter+j, length)) = d_vector[i];
-          
+          if(elementToBucket[i] == buckets[j])
+            newArray[atomicInc(counter, length)] = d_vector[i];
     }
 
   }
@@ -779,8 +772,7 @@ namespace BucketMultiselect{
     uint * d_kIndices;
     uint markedBuckets[kListCount];
     uint * d_markedBuckets; 
-    uint markedBucketStart[kListCount];
-    uint * d_markedBucketStart;
+    uint elementsInMarkedBucketsSoFar;
     uint * d_markedBucketIndexCounter;    
     CUDA_CALL(cudaMalloc(&d_kList, kListCount * sizeof(uint)));
     CUDA_CALL(cudaMalloc(&d_kIndices, kListCount * sizeof (uint)));
@@ -844,18 +836,18 @@ namespace BucketMultiselect{
     kList[0] = kList[0] - kthBucketScanner[0];
     numMarkedBuckets = 1;
     markedBuckets[0] = kthBuckets[0];
-    markedBucketStart[0]=0;
+    elementsInMarkedBucketsSoFar=0;
     for (int i = 1; i < kListCount; i++) {
       if (kthBuckets[i] != kthBuckets[i-1]) {
-        markedBucketStart[i] = markedBucketStart[i-1] + h_bucketCount[kthBuckets[i-1]];
+        elementsInMarkedBucketsSoFar += h_bucketCount[kthBuckets[i-1]];
         markedBuckets[numMarkedBuckets] = kthBuckets[i];
         numMarkedBuckets++;
       }
-      kList[i] = markedBucketStart[i] + kList[i] - kthBucketScanner[i];
+      kList[i] = elementsInMarkedBucketsSoFar + kList[i] - kthBucketScanner[i];
     }
 
     //store the length of the newly copied elements
-    newInputLength = markedBucketStart[numMarkedBuckets-1] + h_bucketCount[kthBuckets[kListCount-1]];
+    newInputLength = elementsInMarkedBucketsSoFar + h_bucketCount[kthBuckets[kListCount-1]];
     printf("randomselect total kbucket_count = %d\n", newInputLength);
 
     /// ***********************************************************
@@ -865,15 +857,13 @@ namespace BucketMultiselect{
     // allocate memories
     CUDA_CALL(cudaMalloc(&newInput, newInputLength * sizeof(T)));
     CUDA_CALL(cudaMalloc(&d_markedBuckets, numMarkedBuckets * sizeof(uint)));
-    CUDA_CALL(cudaMalloc(&d_markedBucketStart, numMarkedBuckets * sizeof(uint)));
-    CUDA_CALL(cudaMalloc(&d_markedBucketIndexCounter, numMarkedBuckets * sizeof(uint)));
+    CUDA_CALL(cudaMalloc(&d_markedBucketIndexCounter, sizeof(uint)));
 
     //copy marked bucket stuff into device
     CUDA_CALL(cudaMemcpy(d_markedBuckets, markedBuckets, numMarkedBuckets * sizeof(uint), cudaMemcpyHostToDevice));
-    CUDA_CALL(cudaMemcpy(d_markedBucketStart, markedBucketStart, numMarkedBuckets * sizeof(uint), cudaMemcpyHostToDevice));
-    setToAllZero(d_markedBucketIndexCounter, numMarkedBuckets);
+    setToAllZero(d_markedBucketIndexCounter, 1);
 
-    copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, d_markedBucketStart, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset);
+    copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset);
 
     /// ***********************************************************
     /// ****STEP 8: Sort
@@ -942,7 +932,6 @@ namespace BucketMultiselect{
   cudaFree(d_kIndices); 
   cudaFree(d_kList); 
   cudaFree(d_markedBuckets); 
-  cudaFree(d_markedBucketStart); 
   cudaFree(d_markedBucketIndexCounter); 
   cudaFree(d_pivots);
 
