@@ -149,18 +149,21 @@ namespace BucketMultiselect{
   __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, uint * bucketStart, const int numBuckets, T* newArray, uint* counter, uint offset){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int threadidx = threadIdx.x;
+    uint tempBucket; 
 
-    extern __shared__ uint sharedStarts[];
+    extern __shared__ uint sharedBuckets[];
     if(threadidx < numBuckets)
-      sharedStarts[threadidx]=bucketStart[threadidx];
+      sharedBuckets[threadidx]=buckets[threadidx];
     syncthreads();
 
     if(idx < length){
-      for(int i=idx; i<length; i+=offset)
+      for(int i=idx; i<length; i+=offset) {
+        tempBucket = elementToBucket[i];
         //copy elements in the kth buckets to the new array
         for (int j = 0; j < numBuckets; j++)
-          if(elementToBucket[i] == buckets[j]) 
-            *(newArray + sharedStarts[j] + atomicInc(counter+j, length)) = d_vector[i];
+          if(tempBucket == sharedBuckets[j]) 
+            *(newArray + atomicInc(bucketStart+j, length)) = d_vector[i];
+      }
           
     }
 
@@ -841,6 +844,7 @@ namespace BucketMultiselect{
     //we must update K since we have reduced the problem size to elements in the kth bucket
     // get the index of the first element
     // add the number of elements
+    timing(0,3);
     kList[0] = kList[0] - kthBucketScanner[0];
     numMarkedBuckets = 1;
     markedBuckets[0] = kthBuckets[0];
@@ -856,6 +860,7 @@ namespace BucketMultiselect{
 
     //store the length of the newly copied elements
     newInputLength = markedBucketStart[numMarkedBuckets-1] + h_bucketCount[kthBuckets[kListCount-1]];
+    timing(1,3);
     printf("randomselect total kbucket_count = %d\n", newInputLength);
 
     /// ***********************************************************
@@ -873,7 +878,9 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMemcpy(d_markedBucketStart, markedBucketStart, numMarkedBuckets * sizeof(uint), cudaMemcpyHostToDevice));
     setToAllZero(d_markedBucketIndexCounter, numMarkedBuckets);
 
+    timing(0,5);
     copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, d_markedBucketStart, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset);
+    timing(1,5);
 
     /// ***********************************************************
     /// ****STEP 8: Sort
