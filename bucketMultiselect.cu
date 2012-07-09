@@ -146,14 +146,21 @@ namespace BucketMultiselect{
 
   //copy elements in the kth bucket to a new array
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, uint offset){
+  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, uint offset, uint * h_bucketCount, int numTotalBuckets){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
+    extern __shared__ int sharedBucketCounts[];
+
+    for(int i=0; i < (numTotalBuckets / 1024); i++) 
+      if (threadIdx.x <numTotalBuckets) 
+        sharedBucketCounts[i] = h_bucketCount[i*gridDim.x + blockIdx.x];
+    /*
     extern __shared__ uint sharedBuckets[];
     if (threadIdx.x <numBuckets)
       sharedBuckets[threadIdx.x]=buckets[threadIdx.x];
-
+    */
     syncthreads();
+
     int minBucketIndex;
     int maxBucketIndex; 
     int midBucketIndex;
@@ -174,14 +181,14 @@ namespace BucketMultiselect{
         for(int j = 1; j < numBuckets; j*=2) {  
           //while (maxBucketIndex >= minBucketIndex) {  
           midBucketIndex = (maxBucketIndex + minBucketIndex) / 2;
-          if (temp > sharedBuckets[midBucketIndex])
+          if (temp > buckets[midBucketIndex])
             minBucketIndex=midBucketIndex+1;
           else
             maxBucketIndex=midBucketIndex;
         }
 
-        if (sharedBuckets[minBucketIndex] == temp) 
-          newArray[atomicInc(counter, length)] = d_vector[i];
+        if (buckets[minBucketIndex] == temp) 
+          newArray[--sharedBucketCounts[minBucketIndex]] = d_vector[i];
         
         /*
         if (threadIdx.x <5)
@@ -196,24 +203,32 @@ namespace BucketMultiselect{
   }
 
   //this function finds the bin containing the kth element we are looking for (works on the host)
-  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, uint * sums, uint * kthBuckets){
-    CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount, numBuckets * sizeof(uint), cudaMemcpyDeviceToHost));
-    /*
-    printf("h_bucketCount[10] = %u\n", h_bucketCount[10]);
-    printf("h_bucketCount[%d] = %u\n", numBuckets -1, h_bucketCount[numBuckets-1]);
-    */
+  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, uint * sums, uint * kthBuckets, int numBlocks){
+    CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount, numBlocks * numBuckets * sizeof(uint), cudaMemcpyDeviceToHost));
     int kBucket = 0;
     int k;
-    int sum=h_bucketCount[0];
+    int sum=0;
+    int insum=0;
 
+    for(int j=0; j<numBlocks; j++){
+      sum+=h_bucketCount[j];
+      insum+=h_bucketCount[j];
+      h_bucketCount[j]=insum;
+    }
     for(int i = 0; i < kCount; i++) {
       k = kVals[i];
       while ((sum < k) & (kBucket < numBuckets-1)) {
         kBucket++; 
-        sum += h_bucketCount[kBucket];
+        insum=0;
+        for(int m=0; m<numBlocks; m++){
+          sum += h_bucketCount[kBucket*numBlocks+m];
+          insum+=h_bucketCount[kBucket*numBlocks+m];
+          h_bucketCount[kBucket*numBlocks+m]=insum;
+        }
       }
       kthBuckets[i]=kBucket;
-      sums[i]=sum - h_bucketCount[kBucket];
+
+      sums[i]=sum - h_bucketCount[kBucket*numBlocks+(numBlocks-1)];
     }
     return 0;
   }
@@ -664,7 +679,7 @@ namespace BucketMultiselect{
     //reading bucket counts from shared memory back to global memory
     for(int i=0; i < (numBuckets/1024); i++)
       if(threadIndex < numBuckets)
-        atomicAdd(bucketCount + i*1024 + threadIndex, sharedBuckets[i*1024 + threadIndex]);
+        atomicAdd(bucketCount + blockIdx.x + gridDim.x * (i*1024 + threadIndex), sharedBuckets[i*1024 + threadIndex]);
 
     /*
    /// Naive while loop implementation
@@ -796,11 +811,11 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
 
     //Allocate memory to store bucket counts
-    size_t totalBucketSize = numBuckets * sizeof(uint);
+    size_t totalBucketSize = numBlocks * numBuckets * sizeof(uint);
     uint h_bucketCount[totalBucketSize]; //array showing the number of elements in each bucket
     uint * d_bucketCount; 
     CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
-    setToAllZero(d_bucketCount, numBuckets);
+    setToAllZero(d_bucketCount, numBlocks * numBuckets);
 
     // array of kth buckets
     int numMarkedBuckets;
@@ -874,20 +889,28 @@ namespace BucketMultiselect{
     /// and their respective update indices
     /// ***********************************************************
     //timing(0, 6);
-    findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets);
+    findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets, numBlocks);
     //timing(1, 6);
 
     //timing(0, 7);
     //we must update K since we have reduced the problem size to elements in the kth bucket
     // get the index of the first element
     // add the number of elements
+    int sum;
+    int holder;
     kList[0] = kList[0] - kthBucketScanner[0];
     numMarkedBuckets = 1;
     markedBuckets[0] = kthBuckets[0];
     elementsInMarkedBucketsSoFar=0;
+    sum=0;
     for (int i = 1; i < kListCount; i++) {
       if (kthBuckets[i] != kthBuckets[i-1]) {
-        elementsInMarkedBucketsSoFar += h_bucketCount[kthBuckets[i-1]];
+        holder=elementsInMarkedBucketsSoFar;
+        elementsInMarkedBucketsSoFar += h_bucketCount[kthBuckets[i-1]*numBlocks+(numBlocks-1)];
+        holder = h_bucketCount[kthBuckets[i-1]*numBlocks+(numBlocks-1)];
+        for (int m=0; m<numBlocks; m++) 
+          h_bucketCount[kthBuckets[i-1]*numBlocks+m]+=sum;
+        sum+= holder;
         markedBuckets[numMarkedBuckets] = kthBuckets[i];
         numMarkedBuckets++;
       }
@@ -895,7 +918,9 @@ namespace BucketMultiselect{
     }
 
     //store the length of the newly copied elements
-    newInputLength = elementsInMarkedBucketsSoFar + h_bucketCount[kthBuckets[kListCount-1]];
+    newInputLength = elementsInMarkedBucketsSoFar + h_bucketCount[kthBuckets[kListCount-1]*numBlocks+(numBlocks-1)];
+        for (int m=0; m<numBlocks; m++) 
+          h_bucketCount[kthBuckets[kListCount-1]*numBlocks+m]+=sum;
     //timing(1, 7);
     printf("randomselect total kbucket_count = %d\n", newInputLength);
 
@@ -916,7 +941,8 @@ namespace BucketMultiselect{
     //timing(1, 8);
     timing(0, 9);
 
-    copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset);
+    //copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset, h_bucketCount);
+    copyElement<<<numBlocks, threadsPerBlock, numBuckets * sizeof(int)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset, h_bucketCount, numBuckets);
     timing(1, 9);
 
     /// ***********************************************************
