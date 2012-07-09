@@ -679,7 +679,7 @@ namespace BucketMultiselect{
     //reading bucket counts from shared memory back to global memory
     for(int i=0; i < (numBuckets/1024); i++)
       if(threadIndex < numBuckets)
-        atomicAdd(bucketCount + blockIdx.x + gridDim.x * (i*1024 + threadIndex), sharedBuckets[i*1024 + threadIndex]);
+        atomicAdd(bucketCount + blockIdx.x * numBuckets + (i*1024 + threadIndex), sharedBuckets[i*1024 + threadIndex]);
 
     /*
    /// Naive while loop implementation
@@ -923,6 +923,7 @@ namespace BucketMultiselect{
           h_bucketCount[kthBuckets[kListCount-1]*numBlocks+m]+=sum;
     //timing(1, 7);
     printf("randomselect total kbucket_count = %d\n", newInputLength);
+    CUDA_CALL(cudaMemcpy(d_bucketCount, h_bucketCount, numBlocks * numBuckets * sizeof(uint), cudaMemcpyHostToDevice));
 
     /// ***********************************************************
     /// ****STEP 7: Copy the kth buckets
