@@ -149,7 +149,15 @@ namespace BucketMultiselect{
   template <typename T>
   __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, uint offset) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-   
+    /*
+    if(idx < length) {
+      for(int i=idx; i<length; i+=offset)
+        //copy elements in the kth buckets to the new array
+        for (int j = 0; j < numBuckets; j++)
+          if(elementToBucket[i] == buckets[j])
+            newArray[atomicInc(counter, length)] = d_vector[i];
+    }
+    */
     extern __shared__ uint sharedBuckets[];
     if (threadIdx.x < numBuckets)
       sharedBuckets[threadIdx.x] = buckets[threadIdx.x];
@@ -197,8 +205,9 @@ namespace BucketMultiselect{
         }
         */
 
-
-        if (minBucketIndex < numBuckets && sharedBuckets[minBucketIndex] == tempBucket) 
+    
+        if (//minBucketIndex < numBuckets && 
+            sharedBuckets[maxBucketIndex] == tempBucket) 
           newArray[atomicInc(counter, length)] = d_vector[i];
       }
   }
@@ -559,6 +568,7 @@ namespace BucketMultiselect{
     //    for (int i = 0; i < numPivots - 2; i++)
     //  printf("slopes = %lf\n", slopes[i]);
 
+    cudaFree(d_randomFloats);
     cudaFree(d_randomInts);
   }
   
@@ -851,6 +861,9 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMemcpy(kIndices, d_kIndices, kListCount * sizeof (uint), cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaMemcpy(kList, d_kList, kListCount * sizeof (uint), cudaMemcpyDeviceToHost)); 
 
+    cudaFree(d_kIndices); 
+    cudaFree(d_kList); 
+
     //timing(1, 3);
     /// ***********************************************************
     /// ****STEP 4: Generate Pivots and Slopes
@@ -971,7 +984,6 @@ namespace BucketMultiselect{
     printf("before sorting\n");
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
-    
     printf("after sorting\n");
 
     //printf("newInputLength = %d\n", newInputLength);
@@ -997,8 +1009,6 @@ namespace BucketMultiselect{
     cudaFree(d_bucketCount); 
     cudaFree(newInput); 
     cudaFree(d_slopes); 
-    cudaFree(d_kIndices); 
-    cudaFree(d_kList); 
     cudaFree(d_markedBuckets); 
     cudaFree(d_markedBucketIndexCounter); 
     cudaFree(d_pivots);

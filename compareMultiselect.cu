@@ -196,28 +196,25 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
 
 template<typename T>
 void runTests(uint generateType, char* fileName,uint startPower, uint stopPower, uint timesToTestEachK = 100) {
-  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 1};
+  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
   uint size;
   uint i;
-  int num = 200;
+  int num = 300;
   uint arrayOfKs[num];
   for(size = (1 << startPower); size <= (1 << stopPower); size *= 2) {
     //calculate k values
     arrayOfKs[0] = 2;
     //  arrayOfKs[1] = (uint) (.01 * (float) size);
     //  arrayOfKs[2] = (uint) (.025 * (float) size);
-    for(i = 1; i <= num - 2; i++) {
-      // arrayOfKs[i + 2] = (uint) ((1 / ((float) (num - 5)) * (float) i) * (float) size);
+    for(i = 1; i <= num - 2; i++) 
       arrayOfKs[i] = (uint) (( i / (float) num ) * size);
-      if (arrayOfKs[i] >= size)
-        printf("YOU FUCKED UP SON\n");
-    }
+    
     //   arrayOfKs[num-3] = (uint) (.9975 * (float) size);
     //  arrayOfKs[num-2] = (uint) (.999 * (float) size);
     arrayOfKs[num-1] = (uint) (size - 2);
 
-    for(i = 1; i < num; i++) {
-      //  cudaDeviceReset();
+    for(i = 200; i < 300; i++) {
+      cudaDeviceReset();
       cudaThreadExit();
       printf("NOW STARTING A NEW K\n\n"); 
       compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, fileName);
