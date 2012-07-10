@@ -72,7 +72,7 @@ namespace NaiveBucketMultiselect{
 
   //this function assigns elements to buckets
   template <typename T>
-  __global__ void assignBucket(T * d_vector, int length, int bucketNumbers, double slope, double minimum, int* bucket, uint* bucketCount, int offset){
+  __global__ void assignBucket(T * d_vector, int length, int numBuckets, double slope, T minimum, uint* elementToBucket, uint* bucketCount, int offset){
   
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int bucketIndex;
@@ -82,12 +82,12 @@ namespace NaiveBucketMultiselect{
     //variables in shared memory for fast access
     __shared__ int sbucketNums;
     __shared__ double sMin;
-    sbucketNums = bucketNumbers;
+    sbucketNums = numBuckets;
     sMin = minimum;
 
     //reading bucket counts into shared memory where increments will be performed
-    for(int i=0; i < (bucketNumbers/1024); i++) 
-      if(index < bucketNumbers) 
+    for(int i=0; i < (numBuckets/1024); i++) 
+      if(index < numBuckets) 
         sharedBuckets[i*1024+index] = 0;
     syncthreads();
 
@@ -102,7 +102,7 @@ namespace NaiveBucketMultiselect{
         if(bucketIndex >= sbucketNums){
           bucketIndex = sbucketNums - 1;
         }
-        bucket[i] = bucketIndex;
+        elementToBucket[i] = bucketIndex;
         atomicInc(&sharedBuckets[bucketIndex], length);
       }
     }
@@ -110,21 +110,21 @@ namespace NaiveBucketMultiselect{
     syncthreads();
 
     //reading bucket counts from shared memory back to global memory
-    for(int i=0; i < (bucketNumbers/1024); i++) 
-      if(index < bucketNumbers) 
-        atomicAdd(&bucketCount[i*1024+index], sharedBuckets[i*1024+index]);
+    for(int i = 0; i < (numBuckets / 1024); i++) 
+      if(index < numBuckets) 
+        atomicAdd(&bucketCount[i * 1024 + index], sharedBuckets[i * 1024 + index]);
   }
   /*
   //this function reassigns elements to buckets
   template <typename T>
-  __global__ void reassignBucket(T* d_vector, int *bucket, uint *bucketCount, const int bucketNumbers, const int length, const double slope, const double maximum, const double minimum, int offset, int Kbucket){
+  __global__ void reassignBucket(T* d_vector, int *bucket, uint *bucketCount, const int numBuckets, const int length, const double slope, const double maximum, const double minimum, int offset, int Kbucket){
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     extern __shared__ uint sharedBuckets[];
     int index = threadIdx.x;
     int bucketIndex;
 
     //reading bucket counts to shared memory where increments will be performed
-    if(index < bucketNumbers){
+    if(index < numBuckets){
       sharedBuckets[index] =0;
     }
     syncthreads();
@@ -135,15 +135,15 @@ namespace NaiveBucketMultiselect{
 
       for(i=idx; i<length; i+=offset){
         if(bucket[i] != Kbucket){
-          bucket[i] = bucketNumbers+1;
+          bucket[i] = numBuckets+1;
         }
         else{
           //calculate the bucketIndex for each element
           bucketIndex = (d_vector[i] - minimum) * slope;
 
           //if it goes beyond the number of buckets, put it in the last bucket
-          if(bucketIndex >= bucketNumbers){
-            bucketIndex = bucketNumbers - 1;
+          if(bucketIndex >= numBuckets){
+            bucketIndex = numBuckets - 1;
           }
           bucket[i] = bucketIndex;
 
@@ -155,44 +155,73 @@ namespace NaiveBucketMultiselect{
     syncthreads();
 
     //reading bucket counts from shared memory back to global memory
-    if(index < bucketNumbers){
+    if(index < numBuckets){
       atomicAdd(&bucketCount[index], sharedBuckets[index]);
     }
   }
   */
   //copy elements in the kth bucket to a new array
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, int* elementToBucket, int * buckets, const int numBuckets, T* newArray, uint* count, int offset){
+  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint * counter, int offset){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
+    /*
     if(idx < length) {
       for(int i=idx; i<length; i+=offset)
         //copy elements in the kth bucket to the new array
         for (int j = 0; j < numBuckets; j++)
           if(elementToBucket[i] == buckets[j])
-            newArray[atomicInc(count, length)] = d_vector[i];
-    }
+            newArray[atomicInc(counter, length)] = d_vector[i];
+            }
+    */
+    extern __shared__ uint sharedBuckets[];
+    if (threadIdx.x < numBuckets)
+      sharedBuckets[threadIdx.x] = buckets[threadIdx.x];
 
+    syncthreads();
+    int minBucketIndex;
+    int maxBucketIndex;
+    int midBucketIndex;
+    uint tempBucket;
+
+    if (idx < length) 
+      for (int i = idx; i < length; i += offset) {
+        tempBucket = elementToBucket[i];
+        minBucketIndex = 0;
+        maxBucketIndex = numBuckets - 1;
+
+        //copy elements in the kth buckets to the new array
+        for (int j = 1; j < numBuckets; j *= 2) {  
+          midBucketIndex = (maxBucketIndex + minBucketIndex) / 2;
+          if (tempBucket > sharedBuckets[midBucketIndex])
+            minBucketIndex = midBucketIndex + 1;
+          else
+            maxBucketIndex = midBucketIndex;
+        }
+    
+        if (//minBucketIndex < numBuckets && 
+            sharedBuckets[maxBucketIndex] == tempBucket) 
+          newArray[atomicInc(counter, length)] = d_vector[i];
+      }
   }
 
   //this function finds the bin containing the kth element we are looking for (works on the host)
-  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, const int numBuckets, uint * kVals, int kCount, int * sums, int * kthBuckets){
+  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, uint * sums, uint * kthBuckets){
+
     CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount, numBuckets * sizeof(uint), cudaMemcpyDeviceToHost));
-    // printf("h_bucketCount[0] = %u\n", h_bucketCount[0]);
-    // printf("h_bucketCount[10] = %u\n", h_bucketCount[10]);
-    // printf("h_bucketCount[%d] = %u\n", numBuckets -1, h_bucketCount[numBuckets-1]);
+
     int kBucket = 0;
     int k;
-    int sum=h_bucketCount[0];
+    int sum = h_bucketCount[0];
 
     for(int i = 0; i < kCount; i++) {
       k = kVals[i];
-      while ((sum < k) & (kBucket < numBuckets-1)) {
+      while ((sum < k) & (kBucket < numBuckets - 1)) {
         kBucket++; 
         sum += h_bucketCount[kBucket];
       }
-      kthBuckets[i]=kBucket;
-      sums[i]=sum - h_bucketCount[kBucket];
+      kthBuckets[i] = kBucket;
+      sums[i] = sum - h_bucketCount[kBucket];
     }
     return 0;
   }
@@ -335,29 +364,14 @@ namespace NaiveBucketMultiselect{
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
-  T phaseOne(T* d_vector, int length, uint * kVals, int kCount, T * output, int blocks, int threads, int pass = 0){
-    //declaring variables for kernel launches
-    int threadsPerBlock = threads;
-    int numBlocks = blocks;
-    int numBuckets = 1024;
-    int offset = blocks * threads;
-
-    // bucket counters
-    int kthBuckets[kCount], kthBucketScanner[kCount], kIndices[kCount], markedBuckets[kCount], numMarkedBuckets, elementsInBucketsSoFar;
-    int * d_markedBuckets;
-
-
-    for (int i = 0; i < kCount; i++) {
-      kthBucketScanner[i] = 0;
-      kIndices[i] = i;
-    }
-
-    // variable to store the end result
-    int newInputLength;
-    T* newInput;
+  T phaseOne(T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int pass = 0){
+    /// ***********************************************************
+    /// ****STEP 1: Find Min and Max of the whole vector
+    /// ****We don't need to go through the rest of the algorithm if it's flat
+    /// ***********************************************************
 
     //find max and min with thrust
-    double maximum, minimum;
+    T maximum, minimum;
 
     thrust::device_ptr<T>dev_ptr(d_vector);
     thrust::pair<thrust::device_ptr<T>, thrust::device_ptr<T> > result = thrust::minmax_element(dev_ptr, dev_ptr + length);
@@ -367,100 +381,141 @@ namespace NaiveBucketMultiselect{
 
     //if the max and the min are the same, then we are done
     if(maximum == minimum){
-      for (int i=0; i<kCount; i++) 
+      for (int i = 0; i < kListCount; i++) 
         output[i] = minimum;
 
       return 0;
     }
-    //if we want the max or min just return it
-    /*
-    if(K == 1){
-      return minimum;
-    }
-    if(K == length){
-      return maximum;
-      }*/	
+
+    /// ***********************************************************
+    /// ****STEP 2: Declare variables and allocate memory
+    /// **** Declare Variables
+    /// ***********************************************************
+
+    //declaring variables for kernel launches
+    int threadsPerBlock = threads;
+    int numBlocks = blocks;
+    int numBuckets = 1024;
+    int offset = blocks * threads;    
 	
     //Allocate memory to store bucket assignments
-    size_t size = length * sizeof(int);
-    uint * count; 
+    size_t size = length * sizeof(uint);
+    uint * d_elementToBucket; //array showing what bucket every element is in
+    CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
 
     size_t totalBucketSize = numBuckets * sizeof(uint);
     uint * h_bucketCount = (uint*) malloc (totalBucketSize);
+
     uint * d_bucketCount; //array showing the number of elements in each bucket
     CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
-    int * d_elementToBucket; //array showing what bucket every element is in
-    CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
+    setToAllZero(d_bucketCount, numBuckets);
+
+    // array of kth buckets
+    int numUniqueBuckets;
+    uint * d_kList;
+    uint kthBuckets[kListCount];
+    uint kthBucketScanner[kListCount];
+    uint kIndices[kListCount];
+    uint * d_kIndices;
+    uint uniqueBuckets[kListCount];
+    uint * d_uniqueBuckets;
+    uint elementsInUniqueBucketsSoFar;
+    uint * d_uniqueBucketIndexCounter;    
+
+    CUDA_CALL(cudaMalloc(&d_kIndices, kListCount * sizeof (uint)));
+    CUDA_CALL(cudaMalloc(&d_kList, kListCount * sizeof (uint)));
+
+    for (int i = 0; i < kListCount; i++) {
+      kthBucketScanner[i] = 0;
+      kIndices[i] = (uint) i;
+    }
 
 
+    // variable to store the end result
+    int newInputLength;
+    T* newInput;
+
+    /// ***********************************************************
+    /// ****STEP 3: Sort the klist
+    /// and keep the old index
+    /// ***********************************************************
+
+    CUDA_CALL(cudaMemcpy(d_kIndices, kIndices, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy(d_kList, kList, kListCount * sizeof (uint), cudaMemcpyHostToDevice)); 
+
+    // sort the given indices
+    thrust::device_ptr<uint>kList_ptr(d_kList);
+    thrust::device_ptr<uint>kIndices_ptr(d_kIndices);
+    thrust::sort_by_key(kList_ptr, kList_ptr + kListCount, kIndices_ptr);
+
+    CUDA_CALL(cudaMemcpy(kIndices, d_kIndices, kListCount * sizeof (uint), cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(kList, d_kList, kListCount * sizeof (uint), cudaMemcpyDeviceToHost)); 
+
+    cudaFree(d_kIndices); 
+    cudaFree(d_kList); 
+
+    /// ***********************************************************
+    /// ****STEP 4: Generate Slope
+    /// ***********************************************************
     //Calculate max-min
     double range = maximum - minimum;
     //Calculate the slope, i.e numBuckets/range
     double slope = (numBuckets - 1) / range;
 
-
-   //Set the bucket count vector to all zeros
-    CUDA_CALL(cudaMalloc(&count, sizeof(uint)));
-    setToAllZero(d_bucketCount, numBuckets);
-
-    int * d_kIndices;
-    uint * d_kVals;
-    CUDA_CALL(cudaMalloc(&d_kIndices, kCount * sizeof (int)));
-    CUDA_CALL(cudaMemcpy(d_kIndices, kIndices, kCount * sizeof (int), cudaMemcpyHostToDevice));
-    CUDA_CALL(cudaMalloc(&d_kVals, kCount * sizeof (uint)));
-    CUDA_CALL(cudaMemcpy(d_kVals, kVals, kCount * sizeof (uint), cudaMemcpyHostToDevice)); 
-
-
-    // sort the given indices
-    thrust::device_ptr<uint>kVals_ptr(d_kVals);
-    thrust::device_ptr<int>kIndices_ptr(d_kIndices);
-    thrust::sort_by_key(kVals_ptr, kVals_ptr + kCount, kIndices_ptr);
-
-    CUDA_CALL(cudaMemcpy(kIndices, d_kIndices, kCount * sizeof (int), cudaMemcpyDeviceToHost));
-    CUDA_CALL(cudaMemcpy(kVals, d_kVals, kCount * sizeof (uint), cudaMemcpyDeviceToHost)); 
+    /// ***********************************************************
+    /// ****STEP 5: Assign elements to buckets
+    /// 
+    /// ***********************************************************
 
     //Distribute elements into their respective buckets
-    assignBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, slope, minimum, d_elementToBucket, d_bucketCount, offset);
+    assignBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, slope, minimum, d_elementToBucket, d_bucketCount, offset);
 
-    cudaThreadSynchronize();
-
-    findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kVals, kCount, kthBucketScanner, kthBuckets);
+    /// ***********************************************************
+    /// ****STEP 6: Find the kth buckets
+    /// and their respective update indices
+    /// ***********************************************************
+    findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets);
 
 
     //we must update K since we have reduced the problem size to elements in the kth bucket
     // get the index of the first element
-    // add the number of elements
-    kVals[0] = kVals[0] - kthBucketScanner[0];
-    elementsInBucketsSoFar = 0;
-    numMarkedBuckets = 1;
-    markedBuckets[0] = kthBuckets[0];
+    kList[0] -= kthBucketScanner[0];
+    numUniqueBuckets = 1;
+    uniqueBuckets[0] = kthBuckets[0];
+    elementsInUniqueBucketsSoFar = 0;
 
-
-    //printf("randomselect total kbucket_count = %u\n", elementsInBucketsSoFar);
-    for (int i = 1; i < kCount; i++) {
+    for (int i = 1; i < kListCount; i++) {
       if (kthBuckets[i] != kthBuckets[i-1]) {
-        elementsInBucketsSoFar += h_bucketCount[kthBuckets[i-1]];
-        markedBuckets[numMarkedBuckets] = kthBuckets[i];
-        numMarkedBuckets++;
+        elementsInUniqueBucketsSoFar += h_bucketCount[kthBuckets[i-1]];
+        uniqueBuckets[numUniqueBuckets] = kthBuckets[i];
+        numUniqueBuckets++;
       }
-      kVals[i] = elementsInBucketsSoFar + kVals[i] - kthBucketScanner[i];
+      kList[i] = elementsInUniqueBucketsSoFar + kList[i] - kthBucketScanner[i];
     }
 
 
-    elementsInBucketsSoFar += h_bucketCount[kthBuckets[kCount-1]];
-
     //store the length of the newly copied elements
-    newInputLength = elementsInBucketsSoFar;
+    newInputLength = elementsInUniqueBucketsSoFar;
+    printf("naive bucketmultiselect total kbucket_count = %d\n", newInputLength);
 
+    /// ***********************************************************
+    /// ****STEP 7: Copy the kth buckets
+    /// only unique ones
+    /// ***********************************************************
+ 
 
-    //copy elements in the kth buckets to a new array
+    // allocate memories
     CUDA_CALL(cudaMalloc(&newInput, newInputLength * sizeof(T)));
-    setToAllZero(count, 1);
+    CUDA_CALL(cudaMalloc(&d_uniqueBuckets, numUniqueBuckets * sizeof(int)));
+    CUDA_CALL(cudaMalloc(&d_uniqueBucketIndexCounter, sizeof(uint)));
 
-    CUDA_CALL(cudaMalloc(&d_markedBuckets, numMarkedBuckets * sizeof(int)));
-    CUDA_CALL(cudaMemcpy(d_markedBuckets, markedBuckets, numMarkedBuckets * sizeof(int), cudaMemcpyHostToDevice));
+    //copy unique bucket stuff into device
+    CUDA_CALL(cudaMemcpy(d_uniqueBuckets, uniqueBuckets, numUniqueBuckets * sizeof(int), cudaMemcpyHostToDevice));
 
-    copyElement<<<numBlocks, threadsPerBlock>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, count, offset);
+    setToAllZero(d_uniqueBucketIndexCounter, 1);
+
+
+    copyElement<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
 
     /*
     //if we only copied one element, then we are done
@@ -495,18 +550,16 @@ namespace NaiveBucketMultiselect{
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
     
-    for (int i = 0; i < kCount; i++) {
-      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kVals[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+    for (int i = 0; i < kListCount; i++) {
+      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
     }
 
     //free all used memory
     cudaFree(d_elementToBucket);  
     cudaFree(d_bucketCount); 
     cudaFree(newInput); 
-    cudaFree(count);
-    cudaFree(d_kIndices);
-    cudaFree(d_kVals);
-    cudaFree(d_markedBuckets);
+    cudaFree(d_uniqueBuckets);
+    cudaFree(d_uniqueBucketIndexCounter); 
     free(h_bucketCount);
 
     return 0;
@@ -519,21 +572,15 @@ namespace NaiveBucketMultiselect{
   //OF BUCKET SELECT TO RUN BASED ON THE INPUT LENGTH
   /**************************************************************************/
   template <typename T>
-  T naiveBucketMultiselectWrapper(T * d_vector, int length, uint * kVals_ori, int kCount, T * outputs, int blocks, int threads)
-  {
+  T naiveBucketMultiselectWrapper(T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads) { 
 
-    uint kVals[kCount];
-    for(int i=0; i<kCount ; i++)
-      kVals[i] = length - kVals_ori[i] + 1;
-
-    //  if(length <= CUTOFF_POINT) 
-    //  phaseTwo(d_vector, length, kVals, kCount, outputs, blocks, threads);
-    //  else 
-    phaseOne(d_vector, length, kVals, kCount, outputs, blocks, threads);
-    // void phaseOneR(T* d_vector, int length, uint * kVals, uint kCount, T * outputs, int blocks, int threads, int pass = 0){
+    uint kList[kListCount];
+    for(int i = 0; i < kListCount ;i++) 
+      kList[i] = length - kList_ori[i] + 1;
+   
+    phaseOne(d_vector, length, kList, kListCount, outputs, blocks, threads);
 
     return 0;
-
   }
 
 }
