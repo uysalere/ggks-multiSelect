@@ -72,36 +72,40 @@ namespace NaiveBucketMultiselect{
 
   //this function assigns elements to buckets
   template <typename T>
-  __global__ void assignBucket(T * d_vector, int length, int numBuckets, double slope, T minimum, uint* elementToBucket, uint* bucketCount, int offset){
+  __global__ void assignBucket(T * d_vector, int length, int numBuckets, double slope, T minimum, uint* elementToBucket, uint* bucketCount, int offset) {
   
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int threadIndex = threadIdx.x;  
+    int index = blockDim.x * blockIdx.x + threadIndex;
     int bucketIndex;
-    extern __shared__ uint sharedBuckets[];
-    int index = threadIdx.x;  
+
  
     //variables in shared memory for fast access
+    extern __shared__ uint sharedBuckets[];
     __shared__ int sbucketNums;
     __shared__ double sMin;
     sbucketNums = numBuckets;
     sMin = minimum;
 
     //reading bucket counts into shared memory where increments will be performed
-    for(int i=0; i < (numBuckets/1024); i++) 
-      if(index < numBuckets) 
-        sharedBuckets[i*1024+index] = 0;
+    for (int i = 0; i < (numBuckets / MAX_THREADS_PER_BLOCK); i++) 
+      if (threadIndex < numBuckets) 
+        sharedBuckets[i * MAX_THREADS_PER_BLOCK + threadIndex] = 0;
+
     syncthreads();
 
     //assigning elements to buckets and incrementing the bucket counts
-    if(idx < length)    {
+    if (threadIndex < length)    {
       int i;
-      for(i=idx; i< length; i+=offset){   
+
+      for (i = index; i < length; i += offset) {   
         //calculate the bucketIndex for each element
         bucketIndex =  (d_vector[i] - sMin) * slope;
 
         //if it goes beyond the number of buckets, put it in the last bucket
-        if(bucketIndex >= sbucketNums){
+        if (bucketIndex >= sbucketNums) {
           bucketIndex = sbucketNums - 1;
         }
+
         elementToBucket[i] = bucketIndex;
         atomicInc(&sharedBuckets[bucketIndex], length);
       }
@@ -110,14 +114,14 @@ namespace NaiveBucketMultiselect{
     syncthreads();
 
     //reading bucket counts from shared memory back to global memory
-    for(int i = 0; i < (numBuckets / 1024); i++) 
-      if(index < numBuckets) 
-        atomicAdd(&bucketCount[i * 1024 + index], sharedBuckets[i * 1024 + index]);
+    for (int i = 0; i < (numBuckets / MAX_THREADS_PER_BLOCK); i++) 
+      if (threadIndex < numBuckets) 
+        atomicAdd(&bucketCount[i * MAX_THREADS_PER_BLOCK + threadIndex], sharedBuckets[i * MAX_THREADS_PER_BLOCK + threadIndex]);
   }
 
   //copy elements in the kth bucket to a new array
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint * counter, int offset){
+  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint * counter, int offset) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     extern __shared__ uint sharedBuckets[];
@@ -140,6 +144,7 @@ namespace NaiveBucketMultiselect{
         //copy elements in the kth buckets to the new array
         for (int j = 1; j < numBuckets; j *= 2) {  
           midBucketIndex = (maxBucketIndex + minBucketIndex) / 2;
+
           if (tempBucket > sharedBuckets[midBucketIndex])
             minBucketIndex = midBucketIndex + 1;
           else
@@ -205,7 +210,7 @@ namespace NaiveBucketMultiselect{
     maximum = *result.second;
 
     //if the max and the min are the same, then we are done
-    if(maximum == minimum){
+    if (maximum == minimum) {
       for (int i = 0; i < kListCount; i++) 
         output[i] = minimum;
 
@@ -282,6 +287,7 @@ namespace NaiveBucketMultiselect{
     /// ***********************************************************
     /// ****STEP 4: Generate Slope
     /// ***********************************************************
+
     //Calculate max-min
     double range = maximum - minimum;
     //Calculate the slope, i.e numBuckets/range
@@ -319,7 +325,7 @@ namespace NaiveBucketMultiselect{
     }
 
     //store the length of the newly copied elements
-    newInputLength = elementsInUniqueBucketsSoFar + h_bucketCount[kthBuckets[kListCount-1]];
+    newInputLength = elementsInUniqueBucketsSoFar + h_bucketCount[kthBuckets[kListCount - 1]];
 
     printf("naive bucketmultiselect total kbucket_count = %d\n", newInputLength);
 
@@ -331,11 +337,11 @@ namespace NaiveBucketMultiselect{
 
     // allocate memories
     CUDA_CALL(cudaMalloc(&newInput, newInputLength * sizeof(T)));
-    CUDA_CALL(cudaMalloc(&d_uniqueBuckets, numUniqueBuckets * sizeof(int)));
+    CUDA_CALL(cudaMalloc(&d_uniqueBuckets, numUniqueBuckets * sizeof(uint)));
     CUDA_CALL(cudaMalloc(&d_uniqueBucketIndexCounter, sizeof(uint)));
 
     //copy unique bucket stuff into device
-    CUDA_CALL(cudaMemcpy(d_uniqueBuckets, uniqueBuckets, numUniqueBuckets * sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy(d_uniqueBuckets, uniqueBuckets, numUniqueBuckets * sizeof(uint), cudaMemcpyHostToDevice));
 
     setToAllZero(d_uniqueBucketIndexCounter, 1);
 
