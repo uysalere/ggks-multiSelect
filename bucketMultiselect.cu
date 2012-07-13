@@ -1,3 +1,17 @@
+/* Copyright 2012 Jeffrey Blanchard, Erik Opavsky, and Emircan Uysaler
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <stdio.h>
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
@@ -20,6 +34,9 @@ namespace BucketMultiselect{
   cudaEvent_t start, stop;
   float time;
 
+  /* start a timer with selection = 0
+   * stop a timer with selection = 1
+   */
   void timing(int selection, int ind){
     if(selection == 0) {
       //****//
@@ -41,22 +58,15 @@ namespace BucketMultiselect{
     }
   }
 
-  template<typename T>
-  void cleanup(uint *h_c, T* d_k, int *etb, uint *bc){
-    free(h_c);
-    cudaFree(d_k);
-    cudaFree(etb);
-    cudaFree(bc);
-  }
-
   //This function initializes a vector to all zeros on the host (CPU)
   void setToAllZero(uint* deviceVector, int length){
     cudaMemset(deviceVector, 0, length * sizeof(uint));
   }
 
-  //copy elements in the kth bucket to a new array
+  // copy elements from specified buckets in d_vector to newArray
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, int offset) {
+  __global__ void copyElements(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, int offset) {
+ 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     extern __shared__ uint sharedBuckets[];
@@ -65,18 +75,23 @@ namespace BucketMultiselect{
 
     syncthreads();
 
+    // variables for binary search
     int minBucketIndex;
     int maxBucketIndex;
     int midBucketIndex;
     uint tempBucket;
 
+    // go through the whole vector
     if (idx < length) 
       for (int i = idx; i < length; i += offset) {
         tempBucket = elementToBucket[i];
         minBucketIndex = 0;
         maxBucketIndex = numBuckets - 1;
 
-        //copy elements in the kth buckets to the new array
+        /* binary search finds whether we wish to copy the current
+         * element based on its bucket and the array of buckets
+         * specified for copying
+         */  
         for (int j = 1; j < numBuckets; j *= 2) {  
           midBucketIndex = (maxBucketIndex + minBucketIndex) / 2;
 
@@ -86,36 +101,13 @@ namespace BucketMultiselect{
             maxBucketIndex = midBucketIndex;
         }
 
-        /* 
-        // binary search from other part of code
-        for(int j = 1; j < numPivots - 1; j *= 2) {
-         midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
-         if (num >= sharedPivots[midPivotIndex])
-          minPivotIndex = midPivotIndex;
-         else
-          maxPivotIndex = midPivotIndex;
-        }
-        */
-
-        /*
-        // original one:  bad alloc at 96
-        for(int j = 1; j < numBuckets; j*=2) {  
-         midBucketIndex = (maxBucketIndex + minBucketIndex) / 2;
-         if (temp > sharedBuckets[midBucketIndex])
-          minBucketIndex=midBucketIndex+1;
-         else
-          maxBucketIndex=midBucketIndex;
-        }
-        */
-
-    
         if (sharedBuckets[maxBucketIndex] == tempBucket) 
           newArray[atomicInc(counter, length)] = d_vector[i];
       }
   }
 
-  //this function finds the bin containing the kth element we are looking for (works on the host)
-  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, uint * sums, uint * kthBuckets) {
+  // this function finds the buckets containing the kth elements we are looking for (works on the host)
+  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kList, int kListCount, uint * sums, uint * kthBuckets) {
 
     CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount, numBuckets * sizeof(uint), cudaMemcpyDeviceToHost));
 
@@ -123,8 +115,8 @@ namespace BucketMultiselect{
     int k;
     int sum = h_bucketCount[0];
 
-    for(int i = 0; i < kCount; i++) {
-      k = kVals[i];
+    for(int i = 0; i < kListCount; i++) {
+      k = kList[i];
       while ((sum < k) & (kBucket < numBuckets - 1)) {
         kBucket++; 
         sum += h_bucketCount[kBucket];
@@ -136,19 +128,6 @@ namespace BucketMultiselect{
     return 0;
   }
 
-  template <typename T>
-  __global__ void GetKvalue(T* d_vector, int * d_bucket, const int Kbucket, const int n, T* Kvalue, int offset )
-  {
-    uint xIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (xIndex < n) {
-      int i;
-      for(i=xIndex; i<n; i+=offset){
-        if ( d_bucket[i] == Kbucket ) 
-          Kvalue[0] = d_vector[i];
-      }
-    }
-  }
 
   /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
   /************************* BEGIN FUNCTIONS FOR RANDOMIZEDBUCKETSELECT ************************/
@@ -338,8 +317,8 @@ namespace BucketMultiselect{
         int maxPivotIndex = numPivots-1;
         int midPivotIndex;
 
-        // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
-        //while (maxPivotIndex > minPivotIndex+1) {
+        // binary search tofind the index of the pivot that is the greatest s.t. lower 
+        // than or equal to num using binary search
         for(int j = 1; j < numPivots - 1; j *= 2) {
           midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
           if (num >= sharedPivots[midPivotIndex])
@@ -362,75 +341,11 @@ namespace BucketMultiselect{
       if(threadIndex < numBuckets)
         atomicAdd(bucketCount + i * MAX_THREADS_PER_BLOCK + threadIndex, 
                   sharedBuckets[i * MAX_THREADS_PER_BLOCK + threadIndex]);
-
-    /*
-    // Naive while loop implementation
-
-    T num = d_vector[i];
-    int j = 1;
-
-    while (num > sharedPivots[j])
-    j++;
-
-    int midPivotIndex=j-1;
-    if (midPivotIndex >NUM_PIVOTS-1) midPivotIndex = NUM_PIVOTS-1;
-
-    if (threadIndex < 10)
-    printf("midPivotIndex = %d\n",midPivotIndex);
-    */
-
-
-    /*
-    // binary search
-    T num = d_vector[i];
-    int minPivotIndex = 0;
-    int maxPivotIndex = numPivots-1;
-    int midPivotIndex;
-
-    // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
-    while (maxPivotIndex >= minPivotIndex) {
-    midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
-    if (sharedPivots[midPivotIndex+1] <= num)
-    minPivotIndex = midPivotIndex+1;
-    else if (sharedPivots[midPivotIndex] > num)
-    maxPivotIndex = midPivotIndex;
-    else
-    break;
-    }
-    */
-
-
-    /*
-   /// temp computation idea
-   int j=0;
-   T num = d_vector[i];
-   int ind = (j+1)*32+(threadIdx.x%32); 
-   T temp = num - sharedPivots[ind];
-   while ( (j<numPivots-2) && (temp>=0) ) {
-   j++;
-   temp = num - sharedPivots[(j+1)*32+(threadIdx.x%32)];
-   }
-
-   ind = j*32+(threadIdx.x%32); 
-   temp = num - sharedPivots[ind];
-   bucketIndex = j*sharedNumSmallBuckets + (int)(temp*sharedSlopes[ind]);
-   elementToBucket[i] = bucketIndex;
-   atomicInc(sharedBuckets + bucketIndex, length);
-   }
-   }
-
-   syncthreads();
-
-   //reading bucket counts from shared memory back to global memory
-   for(int i=0; i < (numBuckets/MAX_THREADS_PER_BLOCK); i++) 
-   if(threadIndex < numBuckets) 
-   atomicAdd(bucketCount + i*MAX_THREADS_PER_BLOCK + threadIndex, sharedBuckets[i*MAX_THREADS_PER_BLOCK + threadIndex]);
-    */
   }
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
-  T phaseOne(T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int pass = 0){    
+  T phaseOne (T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int pass = 0){    
     /// ***********************************************************
     /// ****STEP 1: Find Min and Max of the whole vector
     /// ****We don't need to go through the rest of the algorithm if it's flat
@@ -595,7 +510,7 @@ namespace BucketMultiselect{
    
     timing(0, 9);
  
-    copyElement<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
+    copyElements<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
   
     timing(1, 9);
 

@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Modified by Erik Opavsky for multiselection
+ * Modified by Erik Opavsky and Emircan Uysaler for multiselection
  */
 #include <stdio.h>
 #include <thrust/binary_search.h>  
@@ -36,6 +36,9 @@ namespace NaiveBucketMultiselect{
   cudaEvent_t start, stop;
   float time;
 
+  /* start a timer with selection = 0
+   * stop a timer with selection = 1
+   */
   void timing(int selection, int ind){
     if(selection==0) {
       //****//
@@ -57,20 +60,12 @@ namespace NaiveBucketMultiselect{
     }
   }
 
-  template<typename T>
-  void cleanup(uint *h_c, T* d_k, int *etb, uint *bc){
-    free(h_c);
-    cudaFree(d_k);
-    cudaFree(etb);
-    cudaFree(bc);
-  }
-
-  //This function initializes a vector to all zeros on the host (CPU)
+  // This function initializes a vector to all zeros on the host (CPU)
   void setToAllZero(uint* deviceVector, int length){
     cudaMemset(deviceVector, 0, length * sizeof(uint));
   }
 
-  //this function assigns elements to buckets
+  // this function assigns elements to buckets
   template <typename T>
   __global__ void assignBucket(T * d_vector, int length, int numBuckets, double slope, T minimum, uint* elementToBucket, uint* bucketCount, int offset) {
   
@@ -119,9 +114,10 @@ namespace NaiveBucketMultiselect{
         atomicAdd(&bucketCount[i * MAX_THREADS_PER_BLOCK + threadIndex], sharedBuckets[i * MAX_THREADS_PER_BLOCK + threadIndex]);
   }
 
-  //copy elements in the kth bucket to a new array
+  // copy elements from specified buckets in d_vector to newArray
   template <typename T>
-  __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint * counter, int offset) {
+  __global__ void copyElements(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint * counter, int offset) {
+   
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     extern __shared__ uint sharedBuckets[];
@@ -130,18 +126,23 @@ namespace NaiveBucketMultiselect{
 
     syncthreads();
 
+    // variables for binary search
     int minBucketIndex;
     int maxBucketIndex;
     int midBucketIndex;
     uint tempBucket;
 
+    // go through the whole vector
     if (idx < length) 
       for (int i = idx; i < length; i += offset) {
         tempBucket = elementToBucket[i];
         minBucketIndex = 0;
         maxBucketIndex = numBuckets - 1;
 
-        //copy elements in the kth buckets to the new array
+         /* binary search finds whether we wish to copy the current
+         * element based on its bucket and the array of buckets
+         * specified for copying
+         */  
         for (int j = 1; j < numBuckets; j *= 2) {  
           midBucketIndex = (maxBucketIndex + minBucketIndex) / 2;
 
@@ -156,8 +157,8 @@ namespace NaiveBucketMultiselect{
       }
   }
 
-  //this function finds the bin containing the kth element we are looking for (works on the host)
-  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, uint * sums, uint * kthBuckets) {
+  // this function finds the buckets containing the kth elements we are looking for (works on the host)
+  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kList, int kListCount, uint * sums, uint * kthBuckets) {
 
     CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount, numBuckets * sizeof(uint), cudaMemcpyDeviceToHost));
 
@@ -165,8 +166,8 @@ namespace NaiveBucketMultiselect{
     int k;
     int sum = h_bucketCount[0];
 
-    for(int i = 0; i < kCount; i++) {
-      k = kVals[i];
+    for(int i = 0; i < kListCount; i++) {
+      k = kList[i];
       while ((sum < k) & (kBucket < numBuckets - 1)) {
         kBucket++; 
         sum += h_bucketCount[kBucket];
@@ -178,23 +179,9 @@ namespace NaiveBucketMultiselect{
     return 0;
   }
 
-  template <typename T>
-  __global__ void GetKvalue(T* d_vector, int * d_bucket, const int Kbucket, const int n, T* Kvalue, int offset )
-  {
-    uint xIndex = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (xIndex < n) {
-      int i;
-      for(i=xIndex; i<n; i+=offset){
-        if ( d_bucket[i] == Kbucket ) 
-          Kvalue[0] = d_vector[i];
-      }
-    }
-  }
-
   /* this function finds the kth-largest element from the input array */
   template <typename T>
-  T phaseOne(T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int pass = 0){
+  T phaseOne (T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int pass = 0){
     /// ***********************************************************
     /// ****STEP 1: Find Min and Max of the whole vector
     /// ****We don't need to go through the rest of the algorithm if it's flat
@@ -346,7 +333,7 @@ namespace NaiveBucketMultiselect{
     setToAllZero(d_uniqueBucketIndexCounter, 1);
 
 
-    copyElement<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
+    copyElements<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
 
     /*
     //if we only copied one element, then we are done
