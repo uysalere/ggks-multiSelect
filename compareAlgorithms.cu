@@ -215,7 +215,7 @@ void runTests(uint generateType, char* fileName,uint startPower, uint stopPower,
   uint size;
   uint i;
   uint arrayOfKs[25];
-  for(size = (1 << startPower); size <= (1 <<stopPower);size *= 2){
+  for(size = (1 << startPower); size <= (1 <<stopPower); size *= 2){
     //calculate k values
     arrayOfKs[0]= 2;
     arrayOfKs[1] = .01 * size;
@@ -227,7 +227,7 @@ void runTests(uint generateType, char* fileName,uint startPower, uint stopPower,
     arrayOfKs[23] = .99 * size;
     arrayOfKs[24] = size-1;
 
-    for(i = 0; i <25; i++){
+    for(i = 0; i < 25; i++){
       //  cudaDeviceReset();
       cudaThreadExit();
       printf("NOW STARTING A NEW K\n\n"); 
