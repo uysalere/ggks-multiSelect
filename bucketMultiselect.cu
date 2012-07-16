@@ -594,10 +594,59 @@ namespace BucketMultiselect{
 
       cudaFree(d_randoms);
   }
+  //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
+  template <typename T>
+  __global__ void assignSmartBucket2 (T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, uint* bucketCount, int offset, uint* d_bucketIndex, T * sorted){
+    int index = blockDim.x * blockIdx.x + threadIdx.x;
+    int bucketIndex;
+    int threadIndex = threadIdx.x;  
+    
+    //variables in shared memory for fast access
+    __shared__ int sharedNumSmallBuckets;
+    sharedNumSmallBuckets = numBuckets / (numPivots-1);
+
+    __shared__ double sharedSlopes[NUM_PIVOTS-1];
+    __shared__ T sharedPivots[NUM_PIVOTS];
+  
+    //reading bucket counts into shared memory where increments will be performed
+    for(int i=0; i < (numBuckets / 1024); i++) 
+      if(threadIndex < numPivots) {
+        sharedPivots[threadIndex] = pivots[threadIndex];
+        if(threadIndex < numPivots - 1)
+          sharedSlopes[threadIndex] = slopes[threadIndex];
+      }
+    syncthreads();
+
+    //assigning elements to buckets and incrementing the bucket counts
+    if(index < length) {
+      int i;
+
+      for(i = index; i < length; i += offset) {
+        T num = d_vector[i];
+        int minPivotIndex = 0;
+        int maxPivotIndex = numPivots-1;
+        int midPivotIndex;
+
+        // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
+        //while (maxPivotIndex > minPivotIndex+1) {
+        for(int j = 1; j < numPivots - 1; j*=2) {
+          midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
+          if (num >= sharedPivots[midPivotIndex])
+            minPivotIndex = midPivotIndex;
+          else
+            maxPivotIndex = midPivotIndex;
+        }
+
+        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+        // hashmap implementation set[bucketindex]=add.i;
+        sorted[atomicDec(d_bucketIndex+bucketIndex, length)]=num;
+      }
+    }
+  }
   
   //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
   template <typename T>
-  __global__ void assignSmartBucket(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, uint* elementToBucket, uint* bucketCount, int offset){
+  __global__ void assignSmartBucket1(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, uint* bucketCount, int offset){
   
     int index = blockDim.x * blockIdx.x + threadIdx.x;
     int bucketIndex;
@@ -653,7 +702,6 @@ namespace BucketMultiselect{
         }
 
         bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
-        elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
         atomicInc(sharedBuckets + bucketIndex, length);
       }
@@ -791,16 +839,18 @@ namespace BucketMultiselect{
     T * d_pivots;
 
     //Allocate memory to store bucket assignments
-    size_t size = length * sizeof(uint);
-    uint * d_elementToBucket; //array showing what bucket every element is in
-    CUDA_CALL(cudaMalloc(&d_elementToBucket, size));
+    T * sorted;
+    CUDA_CALL(cudaMalloc(&sorted, length * sizeof(T)));
 
     //Allocate memory to store bucket counts
     size_t totalBucketSize = numBuckets * sizeof(uint);
-    uint h_bucketCount[totalBucketSize]; //array showing the number of elements in each bucket
+    uint h_bucketCount[numBuckets]; //array showing the number of elements in each bucket
     uint * d_bucketCount; 
     CUDA_CALL(cudaMalloc(&d_bucketCount, totalBucketSize));
     setToAllZero(d_bucketCount, numBuckets);
+    uint h_bucketIndex[numBuckets];
+    uint * d_bucketIndex; 
+    CUDA_CALL(cudaMalloc(&d_bucketIndex, totalBucketSize));
 
     // array of kth buckets
     int numMarkedBuckets;
@@ -811,7 +861,7 @@ namespace BucketMultiselect{
     uint * d_kIndices;
     uint markedBuckets[kListCount];
     uint * d_markedBuckets; 
-    uint elementsInMarkedBucketsSoFar;
+    uint reindexCounter[kListCount];  
     uint * d_markedBucketIndexCounter;    
     CUDA_CALL(cudaMalloc(&d_kList, kListCount * sizeof(uint)));
     CUDA_CALL(cudaMalloc(&d_kIndices, kListCount * sizeof (uint)));
@@ -866,8 +916,15 @@ namespace BucketMultiselect{
 
     //timing(0, 5);
     //Distribute elements into their respective buckets
-    assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
+    assignSmartBucket1<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_bucketCount, offset);
     //timing(1, 5);
+
+    CUDA_CALL(cudaMemcpy(h_bucketIndex, d_bucketCount, numBuckets * sizeof(uint), cudaMemcpyDeviceToHost));
+    for (int i = 1; i < numBuckets; i++) 
+      h_bucketIndex[i] +=h_bucketIndex[i-1];
+    CUDA_CALL(cudaMemcpy(d_bucketIndex, h_bucketIndex, numBuckets * sizeof(uint), cudaMemcpyHostToDevice));
+
+    assignSmartBucket2<<<numBlocks, threadsPerBlock>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_bucketCount, offset, d_bucketIndex, sorted);
 
     /// ***********************************************************
     /// ****STEP 6: Find the kth buckets
@@ -881,21 +938,22 @@ namespace BucketMultiselect{
     //we must update K since we have reduced the problem size to elements in the kth bucket
     // get the index of the first element
     // add the number of elements
-    kList[0] = kList[0] - kthBucketScanner[0];
-    numMarkedBuckets = 1;
     markedBuckets[0] = kthBuckets[0];
-    elementsInMarkedBucketsSoFar=0;
+    reindexCounter[0] = 0;
+    numMarkedBuckets = 1;
+    kList[0] -= kthBucketScanner[0];
+
     for (int i = 1; i < kListCount; i++) {
       if (kthBuckets[i] != kthBuckets[i-1]) {
-        elementsInMarkedBucketsSoFar += h_bucketCount[kthBuckets[i-1]];
         markedBuckets[numMarkedBuckets] = kthBuckets[i];
+        reindexCounter[numMarkedBuckets] = reindexCounter[numMarkedBuckets-1] + h_bucketCount[kthBuckets[i-1]];
         numMarkedBuckets++;
       }
-      kList[i] = elementsInMarkedBucketsSoFar + kList[i] - kthBucketScanner[i];
+      kList[i] = reindexCounter[numMarkedBuckets-1] + kList[i] - kthBucketScanner[i];
     }
 
-    //store the length of the newly copied elements
-    newInputLength = elementsInMarkedBucketsSoFar + h_bucketCount[kthBuckets[kListCount-1]];
+    //store the length of the newly copied elements    
+    newInputLength = reindexCounter[numMarkedBuckets-1] + h_bucketCount[kthBuckets[kListCount - 1]];
     //timing(1, 7);
     printf("randomselect total kbucket_count = %d\n", newInputLength);
 
@@ -916,7 +974,11 @@ namespace BucketMultiselect{
     //timing(1, 8);
     timing(0, 9);
 
-    copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset);
+    //copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset);
+    
+    for (int i = 0; i < numMarkedBuckets; i++)
+    CUDA_CALL(cudaMemcpy(newInput + reindexCounter[i], sorted + h_bucketIndex[markedBuckets[i]], h_bucketCount[markedBuckets[i]] * sizeof(T), cudaMemcpyDeviceToHost));
+    //copyIndex<<<1, numMarkedBuckets>>>(sorted, d_bucketIndex, d_markedBuckets, d_reindexCounter, newInput);
     timing(1, 9);
 
     /// ***********************************************************
@@ -981,8 +1043,9 @@ namespace BucketMultiselect{
       }*/
 
   //free all used memory
-  cudaFree(d_elementToBucket);  
   cudaFree(d_bucketCount); 
+  cudaFree(d_bucketIndex); 
+  cudaFree(sorted); 
   cudaFree(newInput); 
   cudaFree(d_slopes); 
   cudaFree(d_kIndices); 
