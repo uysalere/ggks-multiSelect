@@ -161,10 +161,11 @@ void fixSlopes (double * slopes, int numPivots) {
   for (int i = 0; i < numPivots - 1; i++) {
     if (slopes[i] == 0 || isinf(slopes[i])) {
       stop = i+1;
-      while (slopes[stop] == 0 || isinf(slopes[stop]) && stop < numPivots) 
+      while (slopes[stop+1] == 0 || isinf(slopes[stop+1]) && stop+1 < numPivots) 
         stop++;
-      // now slopes[i] is the first repeated zero or inf in a row, and
-      //  slopes[stop-1] is the last zero or inf slope
+
+      // now slopes[i] is the first repeated zero or inf of the group, and
+      //  slopes[stop] is the last zero or inf slope
       if (stop == numPivots - 1) {
         printf("here\n");
         // steal slope from below
@@ -182,6 +183,62 @@ void fixSlopes (double * slopes, int numPivots) {
   }
 }
 
+template <typename T>
+float runTest(int numPivots, int sizeOfVector, int sizeOfSample) {
+  T pivots[numPivots];
+  double slopes[numPivots - 1];
+
+  T * list = (T *) malloc (sizeOfVector * sizeof (T));
+
+  // initialize array
+  for (int j = 0; j < sizeOfVector; j++)
+    list[j] =  (T) (j % 4);
+
+  T * d_list;
+  cudaMalloc (&d_list, sizeOfVector * sizeof (T));
+  cudaMemcpy(d_list, list, sizeOfVector * sizeof (T), cudaMemcpyHostToDevice);
+
+  thrust::device_ptr<T>list_ptr(d_list);
+  thrust::pair<thrust::device_ptr<T>, thrust::device_ptr<T> > result = thrust::minmax_element(list_ptr, list_ptr + sizeOfVector);
+
+  T min = *result.first;
+  T max = *result.second;
+
+  cudaEvent_t start, stop;
+  float time;
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+  cudaEventRecord(start,0);
+
+  generatePivots<T>(pivots, slopes, d_list, sizeOfVector, numPivots, sizeOfSample, 1024, min, max);
+
+  cudaThreadSynchronize();
+  cudaEventRecord(stop,0);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&time, start, stop);
+  cudaEventDestroy(start);
+  cudaEventDestroy(stop);
+   
+  free(list);
+  cudaFree(d_list);
+
+  printf("pivots:\n");
+  for (int i = 0; i < numPivots; i++) 
+    std::cout << pivots[i] << '\n';
+
+  printf("\nslopes before:\n");
+  for (int i = 0; i < numPivots-1; i++) 
+    std::cout << slopes[i] << '\n';
+   
+  fixSlopes(slopes, numPivots);
+
+  printf("\nslopes after:\n");
+  for (int i = 0; i < numPivots-1; i++) 
+    std::cout << slopes[i] << '\n';
+
+  return time;
+}
+
 
 int main() {
 
@@ -191,154 +248,18 @@ int main() {
     int numPivots = 17;
     
     //********* TEST FLOAT **********//
-    if (FLOAT) {
-      float floatPivots[numPivots];
-      double floatSlopes[numPivots - 1];
-  
-      float * floatList = (float *) malloc (sizeOfVector * sizeof (float));
-
-      // initialize array
-      for (int j = 0; j < sizeOfVector; j++)
-        floatList[j] =  (float) (j % 4);
-
-      float * d_floatList;
-      cudaMalloc ((void **) &d_floatList, sizeOfVector * sizeof (float));
-      cudaMemcpy(d_floatList, floatList, sizeOfVector * sizeof (float), cudaMemcpyHostToDevice);
-
-      thrust::device_ptr<float>float_ptr(d_floatList);
-      thrust::pair<thrust::device_ptr<float>, thrust::device_ptr<float> > result = thrust::minmax_element(float_ptr, float_ptr + sizeOfVector);
-      float floatMin = *result.first;
-      float floatMax = *result.second;
-
-      cudaEvent_t start3, stop3;
-      float time3;
-      cudaEventCreate(&start3);
-      cudaEventCreate(&stop3);
-      cudaEventRecord(start3,0);
-
-      generatePivots<float>(floatPivots, floatSlopes, d_floatList, sizeOfVector, numPivots, sizeOfSample, 1024, floatMin, floatMax);
-
-      cudaThreadSynchronize();
-      cudaEventRecord(stop3,0);
-      cudaEventSynchronize(stop3);
-      cudaEventElapsedTime(&time3, start3, stop3);
-      cudaEventDestroy(start3);
-      cudaEventDestroy(stop3);
+    if (FLOAT) 
+      printf("\nfloat time = %f\n\n", runTest<float>(numPivots, sizeOfVector, sizeOfSample));
     
-      free(floatList);
-      cudaFree(d_floatList);
-
-      printf("\n\nfloat pivots:\n");
-      for (int i = 0; i < numPivots; i++) 
-        //std::cout << floatPivots[i] << '\n';
-        printf("%f\n", floatPivots[i]);
-
-      printf("\nfloat time = %f\n\n", time3);
-    }
 
     //********* TEST DOUBLE **********//
-    if (DOUBLE) {
-      double doublePivots[numPivots];
-      double doubleSlopes[numPivots - 1];
+    if (DOUBLE)
+      printf("\ndouble time = %f\n\n", runTest<double>(numPivots, sizeOfVector, sizeOfSample));
 
-      double * doubleList = (double *) malloc (sizeOfVector * sizeof (double));
-
-      // initialize array
-      for (int j = 0; j < sizeOfVector; j++)
-        doubleList[j] =  (double) j;
-
-      double * d_doubleList;
-      cudaMalloc ((void **) &d_doubleList, sizeOfVector * sizeof (double));
-      cudaMemcpy(d_doubleList, doubleList, sizeOfVector * sizeof (double), cudaMemcpyHostToDevice);
-
-      thrust::device_ptr<double>double_ptr(d_doubleList);
-      thrust::pair<thrust::device_ptr<double>, thrust::device_ptr<double> > result = thrust::minmax_element(double_ptr, double_ptr + sizeOfVector);
-      float doubleMin = *result.first;
-      float doubleMax = *result.second;
-
-      cudaEvent_t start1, stop1;
-      float time1;
-      cudaEventCreate(&start1);
-      cudaEventCreate(&stop1);
-      cudaEventRecord(start1,0);
-
-      generatePivots<double>(doublePivots, doubleSlopes, d_doubleList, sizeOfVector, numPivots, sizeOfSample, 1024, doubleMin, doubleMax);
-
-      cudaThreadSynchronize();
-      cudaEventRecord(stop1,0);
-      cudaEventSynchronize(stop1);
-      cudaEventElapsedTime(&time1, start1, stop1);
-      cudaEventDestroy(start1);
-      cudaEventDestroy(stop1);
-    
-      free(doubleList);
-      cudaFree(d_doubleList);
-
-      printf("\n\ndouble pivots:\n");
-      for (int i = 0; i < numPivots; i++) 
-        //std::cout << floatPivots[i] << '\n';
-        printf("%lf\n", doublePivots[i]);
-
-      printf("\ndouble time = %f\n\n", time1);
-
-    }
-
-    if (INT) {
-      uint intPivots[numPivots];
-      double intSlopes[numPivots - 1];
-
-      uint * intList = (uint *) malloc (sizeOfVector * sizeof (uint));
-
-      // initialize array
-      for (uint j = 0; j < sizeOfVector; j++)
-        intList[j] = j%4; 
-
-      uint * d_intList;
-      cudaMalloc ((void **) &d_intList, sizeOfVector * sizeof (uint));
-      cudaMemcpy(d_intList, intList, sizeOfVector * sizeof (uint), cudaMemcpyHostToDevice);
-
-      thrust::device_ptr<uint>uint_ptr(d_intList);
-      thrust::pair<thrust::device_ptr<uint>, thrust::device_ptr<uint> > result = thrust::minmax_element(uint_ptr, uint_ptr + sizeOfVector);
-      float uintMin = *result.first;
-      float uintMax = *result.second;
-
-      cudaEvent_t start2, stop2;
-      float time2;
-      cudaEventCreate(&start2);
-      cudaEventCreate(&stop2);
-      cudaEventRecord(start2,0);
-
-      generatePivots<uint>(intPivots, intSlopes, d_intList, sizeOfVector, numPivots, sizeOfSample, 1024, uintMin, uintMax);
-
-      cudaThreadSynchronize();
-      cudaEventRecord(stop2,0);
-      cudaEventSynchronize(stop2);
-      cudaEventElapsedTime(&time2, start2, stop2);
-      cudaEventDestroy(start2);
-      cudaEventDestroy(stop2);
-    
-      free(intList);
-      cudaFree(d_intList);
-
-      printf("\n\nint pivots:\n");
-      for (int i = 0; i < numPivots; i++) 
-        //std::cout << intPivots[i] << '\n';
-        printf("%u\n", intPivots[i]);
-
-      printf("\nint slopes:\n");
-      for (int i = 0; i < numPivots - 1; i++)
-        printf("%lf\n", intSlopes[i]);
-
-      fixSlopes(intSlopes, numPivots);
-
-      printf("\nint slopes:\n");
-      for (int i = 0; i < numPivots - 1; i++)
-        printf("%lf\n", intSlopes[i]);
-
-      printf("\nint time = %f\n\n", time2);
-      
-    }
-
+    //*********** TEST INT ***********//
+    if (INT)    
+      printf("\nint time = %f\n\n", runTest<int>(numPivots, sizeOfVector, sizeOfSample));
   }
+
   return 0;
 }

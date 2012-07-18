@@ -175,8 +175,7 @@ namespace BucketMultiselect{
     seed = t1.tv_usec * t1.tv_sec;
   
     thrust::device_ptr<T> d_ptr(d_vec);
-    thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(size),
-                      d_ptr, RandomNumberFunctor(seed));
+    thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(size), d_ptr, RandomNumberFunctor(seed));
   }
 
   template <typename T>
@@ -455,6 +454,13 @@ namespace BucketMultiselect{
     // Find bucket sizes using a randomized selection
     generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum);
     
+    // make any slopes that were infinity due to division by zero (due to no 
+    //  difference between the two associated pivots) into zero, so all the
+    //  values which use that slope are projected into a single bucket
+    for (int i = 0; i < numPivots - 1; i++)
+      if (isinf(slopes[i]))
+        slopes[i] = 0;
+
     CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));  
     CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice));
 
