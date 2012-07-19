@@ -51,7 +51,7 @@ namespace BucketMultiselect{
 
   //This function initializes a vector to all zeros on the host (CPU)
   template<typename T>
-  void setToAllZero(T* deviceVector, int length){
+  void setToAllZero(T * deviceVector, int length){
     cudaMemset(deviceVector, 0, length * sizeof(T));
   }
 
@@ -76,7 +76,7 @@ namespace BucketMultiselect{
     int maxBucketIndex; 
     int midBucketIndex;
     uint temp;
-    uint holder;
+    //uint holder;
 
     if(idx < length) {
       for(int i=idx; i<length; i+=offset) {
@@ -94,15 +94,8 @@ namespace BucketMultiselect{
             maxBucketIndex=midBucketIndex;
         }
 
-        if (buckets[maxBucketIndex] == temp) {
-          holder = atomicDec(d_bucketCount + blockIdx.x * numTotalBuckets + temp, length);
-          //holder = atomicInc(d_bucketCount + blockIdx.x * numTotalBuckets + temp, length);
-          //printf("holder %d is %u\n", maxBucketIndex, holder);
-          atomicInc(counter + maxBucketIndex, length);
-          newArray[holder-1] = d_vector[i];
-          //newArray[--sharedBucketCounts[temp]] = d_vector[i];
-          //newArray[atomicInc(counter, length)] = d_vector[i];
-      }
+        if (buckets[maxBucketIndex] == temp) 
+          newArray[atomicDec(d_bucketCount + blockIdx.x * numTotalBuckets + temp, length)-1] = d_vector[i];
         
       }
     }
@@ -576,20 +569,10 @@ namespace BucketMultiselect{
     timing(1, 6);
     timing(0, 9);
 
-    uint * d_counter;
-    CUDA_CALL(cudaMalloc(&d_counter, sizeof(uint) * numMarkedBuckets));
-    setToAllZero<uint>(d_counter, numMarkedBuckets);
     //copyElement<<<numBlocks, threadsPerBlock, numMarkedBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset, h_bucketCount);
-    copyElement<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_counter, offset, d_bucketCount, numBuckets);
+    copyElement<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_markedBuckets, numMarkedBuckets, newInput, d_markedBucketIndexCounter, offset, d_bucketCount, numBuckets);
     timing(1, 9);
 
-    uint counter[numMarkedBuckets];
-    CUDA_CALL(cudaMemcpy(&counter, d_counter, sizeof (uint) * numMarkedBuckets, cudaMemcpyDeviceToHost)); 
-    /*
-    for (int i = 0; i < numMarkedBuckets; i++) 
-      printf("h_bucketCount[%u] adds to %u\n", h_bucketCount[markedBuckets[i]], counter[i]);
-    */
-    cudaFree(d_counter); 
     /// ***********************************************************
     /// ****STEP 8: Sort
     /// and finito
