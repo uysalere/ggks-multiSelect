@@ -33,8 +33,8 @@
 #include "generateProblems.cu"
 #include "multiselectTimingFunctions.cu"
 
-#define NUMBEROFALGORITHMS 3
-char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose Multiselect", "Bucket Multiselect", "Naive Bucket Multiselect"};
+#define NUMBEROFALGORITHMS 4
+char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose Multiselect", "Bucket Multiselect", "Naive Bucket Multiselect", "Bucket Multiselect Blocked"};
 
 
 __host__ __device__
@@ -122,7 +122,8 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   //these are the functions that can be called
   ptrToTimingFunction arrayOfTimingFunctions[NUMBEROFALGORITHMS] = {&timeSortAndChooseMultiselect<T>,
                                                                     &timeBucketMultiselect<T>, 
-                                                                    &timeNaiveBucketMultiselect<T>};
+                                                                    &timeNaiveBucketMultiselect<T>,
+                                                                    &timeBucketMultiselectBlocked<T>};
   
   ptrToGeneratingFunction *arrayOfGenerators;
   char** namesOfGeneratingFunctions;
@@ -261,7 +262,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
 template<typename T>
 void runTests(uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, 
               uint startK, uint stopK, uint kJump) {
-  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
+  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0, 1};
   uint size;
   uint i;
   uint arrayOfKs[stopK+1];

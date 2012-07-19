@@ -32,11 +32,11 @@ namespace BucketMultiselect{
       return EXIT_FAILURE;}} while(0)
 
 
-    /// ***********************************************************
-    /// ***********************************************************
-    /// **** HELPER CPU FUNCTIONS
-    /// ***********************************************************
-    /// ***********************************************************
+  /// ***********************************************************
+  /// ***********************************************************
+  /// **** HELPER CPU FUNCTIONS
+  /// ***********************************************************
+  /// ***********************************************************
 
   cudaEvent_t start, stop;
   float time;
@@ -72,11 +72,11 @@ namespace BucketMultiselect{
   }
 
 
-    /// ***********************************************************
-    /// ***********************************************************
-    /// **** HELPER GPU FUNCTIONS-KERNELS
-    /// ***********************************************************
-    /// ***********************************************************
+  /// ***********************************************************
+  /// ***********************************************************
+  /// **** HELPER GPU FUNCTIONS-KERNELS
+  /// ***********************************************************
+  /// ***********************************************************
 
   
   //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
@@ -138,7 +138,7 @@ namespace BucketMultiselect{
         }
 
         /*
-        minPivotIndex = (((num>=sharedPivots[0]) & (num<sharedPivots[1])) * 0) |
+          minPivotIndex = (((num>=sharedPivots[0]) & (num<sharedPivots[1])) * 0) |
           (((num>=sharedPivots[1]) & (num<sharedPivots[2])) * 1) | 
           (((num>=sharedPivots[2]) & (num<sharedPivots[3])) * 2) | 
           (((num>=sharedPivots[3]) & (num<sharedPivots[4])) * 3) | 
@@ -224,7 +224,7 @@ namespace BucketMultiselect{
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
         //bucketCount[blockIdx.x * numBuckets + bucketIndex]++;
-        atomicInc(sharedBuckets + bucketIndex, length);
+        atomicInc (sharedBuckets + bucketIndex, length);
       }
     }
     
@@ -238,7 +238,7 @@ namespace BucketMultiselect{
   }
 
   // this function finds the buckets containing the kth elements we are looking for (works on the host)
-  inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kList, int kListCount, uint * sums, uint * kthBuckets) {
+  inline int findKBuckets (uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kList, int kListCount, uint * sums, uint * kthBuckets) {
 
     CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount, numBuckets * sizeof(uint), cudaMemcpyDeviceToHost));
 
@@ -264,10 +264,10 @@ namespace BucketMultiselect{
   inline int findKBucketsBlocked(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, uint * sums, uint * kthBuckets, int numBlocks){
     int sumsRowIndex= numBuckets * (numBlocks-1);
     /*
-    for(int j=0; j<numBuckets; j++)
+      for(int j=0; j<numBuckets; j++)
       CUDA_CALL(cudaMemcpy(h_bucketCount + j, d_bucketCount + sumsRowIndex + j, sizeof(uint), cudaMemcpyDeviceToHost));
     */
-      CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount + sumsRowIndex, sizeof(uint) * numBuckets, cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount + sumsRowIndex, sizeof(uint) * numBuckets, cudaMemcpyDeviceToHost));
 
     int kBucket = 0;
     int k;
@@ -336,9 +336,9 @@ namespace BucketMultiselect{
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     /*
-    extern __shared__ uint sharedBucketCounts[];
+      extern __shared__ uint sharedBucketCounts[];
 
-    if(threadIdx.x < numBuckets)
+      if(threadIdx.x < numBuckets)
       sharedBucketCounts[threadIdx.x] = d_bucketCount[blockIdx.x * numTotalBuckets + buckets[threadIdx.x]];
     */
    
@@ -385,25 +385,25 @@ namespace BucketMultiselect{
     
   }
 
-  __global__ void reindexCounts(uint * d_bucketCount, const int numBuckets, const int numBlocks, uint * d_reindexCounter, uint * d_markedBuckets) {
-    int index = d_markedBuckets[threadIdx.x];
+  __global__ void reindexCounts(uint * d_bucketCount, const int numBuckets, const int numBlocks, uint * d_reindexCounter, uint * d_uniqueBuckets) {
+    int index = d_uniqueBuckets[threadIdx.x];
     int add = d_reindexCounter[threadIdx.x];
 
     for(int j=0; j<numBlocks; j++) 
       d_bucketCount[index + numBuckets*j] += (uint) add;
     /*
-    for(int j=numBlocks; j>0; j--) 
+      for(int j=numBlocks; j>0; j--) 
       d_bucketCount[index + numBuckets*j] = d_bucketCount[index + numBuckets*(j-1)] +  add;
 
-    d_bucketCount[index] =  add;
+      d_bucketCount[index] =  add;
     */
   }
 
-    /// ***********************************************************
-    /// ***********************************************************
-    /// **** GENERATE PIVOTS
-    /// ***********************************************************
-    /// ***********************************************************
+  /// ***********************************************************
+  /// ***********************************************************
+  /// **** GENERATE PIVOTS
+  /// ***********************************************************
+  /// ***********************************************************
 
   __host__ __device__
   unsigned int hash(unsigned int a) {
@@ -539,11 +539,11 @@ namespace BucketMultiselect{
     cudaFree(d_randoms);
   }
 
-    /// ***********************************************************
-    /// ***********************************************************
-    /// **** PHASE ONE
-    /// ***********************************************************
-    /// ***********************************************************
+  /// ***********************************************************
+  /// ***********************************************************
+  /// **** PHASE ONE
+  /// ***********************************************************
+  /// ***********************************************************
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
@@ -866,7 +866,6 @@ namespace BucketMultiselect{
     uint * d_uniqueBuckets; 
     uint reindexCounter[kListCount];  
     uint * d_reindexCounter;  
-    //uint elementsInUniqueBucketsSoFar;
     uint * d_uniqueBucketIndexCounter;    
 
     CUDA_CALL(cudaMalloc(&d_kList, kListCount * sizeof(uint)));
@@ -927,7 +926,6 @@ namespace BucketMultiselect{
     /// ***********************************************************
 
     //Distribute elements into their respective buckets
-    //assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
     assignSmartBucketBlocked<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
 
     sumCounts<<<numBuckets/threadsPerBlock, threadsPerBlock>>>(d_bucketCount, numBuckets, numBlocks);
@@ -936,8 +934,6 @@ namespace BucketMultiselect{
     /// ****STEP 6: Find the kth buckets
     /// and their respective update indices
     /// ***********************************************************
-
-    //findKBuckets (d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets);
     findKBucketsBlocked(d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets, numBlocks);
 
     // we must update K since we have reduced the problem size to elements in the kth bucket
@@ -959,25 +955,7 @@ namespace BucketMultiselect{
 
     newInputLength = reindexCounter[numUniqueBuckets-1] + h_bucketCount[kthBuckets[kListCount - 1]];
 
-    /*
-    kList[0] -= kthBucketScanner[0];
-    numUniqueBuckets = 1;
-    uniqueBuckets[0] = kthBuckets[0];
-    elementsInUniqueBucketsSoFar = 0;
-
-    for (register int i = 1; i < kListCount; i++) {
-      if (kthBuckets[i] != kthBuckets[i-1]) {
-        elementsInUniqueBucketsSoFar += h_bucketCount[kthBuckets[i-1]];
-        uniqueBuckets[numUniqueBuckets] = kthBuckets[i];
-        numUniqueBuckets++;
-      }
-      kList[i] = elementsInUniqueBucketsSoFar + kList[i] - kthBucketScanner[i];
-    }
-    //store the length of the newly copied elements
-    newInputLength = elementsInUniqueBucketsSoFar + h_bucketCount[kthBuckets[kListCount - 1]];
-    */
-
-    printf("bucketmultiselect total kbucket_count = %d\n", newInputLength);
+    printf("bucketmultiselectBlocked total kbucket_count = %d\n", newInputLength);
 
     CUDA_CALL(cudaMalloc(&d_reindexCounter, numUniqueBuckets * sizeof(uint)));
     CUDA_CALL(cudaMalloc(&d_uniqueBuckets, numUniqueBuckets * sizeof(uint)));
@@ -1057,5 +1035,27 @@ namespace BucketMultiselect{
     return 0;
   }
 
+  template <typename T>
+  T bucketMultiselectBlockedWrapper (T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads) { 
+
+    uint kList[kListCount];
+    for (register int i = 0; i < kListCount; i++) 
+      kList[i] = length - kList_ori[i] + 1;
+   
+    /*
+      printf("start here\n");
+      printf("k-length: %d\n", length);
+      for(int i=0; i<kListCount ; i++)
+      printf("k-%d: %d\n", i, kList[i]);
+    */
+
+    //  if(length <= CUTOFF_POINT) 
+    //  phaseTwo(d_vector, length, kList, kListCount, outputs, blocks, threads);
+    //  else 
+    phaseOneBlocked (d_vector, length, kList, kListCount, outputs, blocks, threads);
+    // void phaseOneR(T* d_vector, int length, uint * kList, uint kListCount, T * outputs, int blocks, int threads, int pass = 0){
+
+    return 0;
+  }
 }
 
