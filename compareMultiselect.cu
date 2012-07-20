@@ -284,10 +284,12 @@ void runTests(uint generateType, char* fileName, uint startPower, uint stopPower
 
     generateRandoms(arrayOfKs, stopK+1, size);
 
+    /*
     printf("arrayOfKs = ");
     for(uint j = 0; j < stopK+1; j++)
       printf("%u; ", arrayOfKs[j]);
     printf("\n\n");
+    */
 
     for(i = startK; i <= stopK; i+=kJump) {
       cudaDeviceReset();
