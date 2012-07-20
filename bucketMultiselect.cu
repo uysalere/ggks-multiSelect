@@ -335,16 +335,15 @@ namespace BucketMultiselect{
   __global__ void copyElementsBlocked(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, uint offset, uint * d_bucketCount, int numTotalBuckets){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    /*
-      extern __shared__ uint sharedBucketCounts[];
-
-      if(threadIdx.x < numBuckets)
-      sharedBucketCounts[threadIdx.x] = d_bucketCount[blockIdx.x * numTotalBuckets + buckets[threadIdx.x]];
-    */
-   
-    extern __shared__ uint sharedBuckets[];
-    if (threadIdx.x <numBuckets)
+    extern __shared__ uint array[];
+    uint * sharedBucketCounts= (uint*)array;
+    uint * sharedBuckets= (uint*)&array[numBuckets];
+    //extern __shared__ uint sharedBucketCounts[];
+    if(threadIdx.x < numBuckets) {
       sharedBuckets[threadIdx.x]=buckets[threadIdx.x];
+      sharedBucketCounts[threadIdx.x] = d_bucketCount[blockIdx.x * numTotalBuckets + sharedBuckets[threadIdx.x]];
+    }
+    
     syncthreads();
 
     int minBucketIndex;
@@ -361,16 +360,16 @@ namespace BucketMultiselect{
 
         //copy elements in the kth buckets to the new array
         for(int j = 1; j < numBuckets; j*=2) {  
-          //while (maxBucketIndex >= minBucketIndex) {  
           midBucketIndex = (maxBucketIndex + minBucketIndex) / 2;
-          if (temp > buckets[midBucketIndex])
+          if (temp > sharedBuckets[midBucketIndex])
             minBucketIndex=midBucketIndex+1;
           else
             maxBucketIndex=midBucketIndex;
         }
 
         if (buckets[maxBucketIndex] == temp) 
-          newArray[atomicDec(d_bucketCount + blockIdx.x * numTotalBuckets + temp, length)-1] = d_vector[i];
+          //newArray[atomicDec(d_bucketCount + blockIdx.x * numTotalBuckets + temp, length)-1] = d_vector[i];
+          newArray[atomicDec(sharedBucketCounts + maxBucketIndex, length)-1] = d_vector[i];
         
       }
     }
@@ -980,7 +979,7 @@ namespace BucketMultiselect{
     timing(0, 9);
  
     //copyElements<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
-    copyElementsBlocked<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset, d_bucketCount, numBuckets);
+    copyElementsBlocked<<<numBlocks, threadsPerBlock, numBuckets * 2 * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset, d_bucketCount, numBuckets);
   
     timing(1, 9);
 
