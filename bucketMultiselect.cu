@@ -60,12 +60,13 @@ namespace BucketMultiselect{
   __global__ void copyElement(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, uint offset, uint * d_bucketCount, int numTotalBuckets){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int threadIndex;
+    int loop = numBuckets / MAX_THREADS_PER_BLOCK;
 
     extern __shared__ uint array[];
     uint * sharedBucketCounts= (uint*)array;
     uint * sharedBuckets= (uint*)&array[numBuckets];
-    //extern __shared__ uint sharedBucketCounts[];
-    for (int i = 0; i <= (numBuckets / MAX_THREADS_PER_BLOCK); i++) {      
+
+    for (int i = 0; i <= loop; i++) {      
       threadIndex = i * blockDim.x + threadIdx.x;
       if(threadIndex < numBuckets) {
         sharedBuckets[threadIndex]=buckets[threadIndex];
@@ -137,18 +138,19 @@ namespace BucketMultiselect{
 
   __global__ void reindexCounts(uint * d_bucketCount, const int numBuckets, const int numBlocks, uint * d_reindexCounter, uint * d_markedBuckets, const int numUniqueBuckets) {
     int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+
     if(threadIndex<numUniqueBuckets) {
-    int index = d_markedBuckets[threadIndex];
-    int add = d_reindexCounter[threadIndex];
+      int index = d_markedBuckets[threadIndex];
+      int add = d_reindexCounter[threadIndex];
 
-    for(int j=0; j<numBlocks; j++) 
-      d_bucketCount[index + numBuckets*j] += (uint) add;
-    /*
-    for(int j=numBlocks; j>0; j--) 
-      d_bucketCount[index + numBuckets*j] = d_bucketCount[index + numBuckets*(j-1)] +  add;
+      for(int j=0; j<numBlocks; j++) 
+        d_bucketCount[index + numBuckets*j] += (uint) add;
+      /*
+        for(int j=numBlocks; j>0; j--) 
+        d_bucketCount[index + numBuckets*j] = d_bucketCount[index + numBuckets*(j-1)] +  add;
 
-    d_bucketCount[index] =  add;
-    */
+        d_bucketCount[index] =  add;
+      */
 
     }
   }
@@ -549,7 +551,7 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMemcpy(d_reindexCounter, reindexCounter, numMarkedBuckets * sizeof(uint), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(d_markedBuckets, markedBuckets, numMarkedBuckets * sizeof(uint), cudaMemcpyHostToDevice));
 
-    reindexCounts<<<ceil((float)numMarkedBuckets/threadsPerBlock), numMarkedBuckets>>>(d_bucketCount, numBuckets, numBlocks, d_reindexCounter, d_markedBuckets, numMarkedBuckets);
+    reindexCounts<<<ceil((float)numMarkedBuckets/threadsPerBlock), threadsPerBlock>>>(d_bucketCount, numBuckets, numBlocks, d_reindexCounter, d_markedBuckets, numMarkedBuckets);
 
     timing(1, 22);
 
