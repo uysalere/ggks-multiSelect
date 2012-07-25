@@ -598,6 +598,7 @@ namespace BucketMultiselect{
       CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
       }
     */
+
     printf("pass1\n");
     for (int i = 0; i < kListCount; i++) 
       printf("bucketIndices %d = %u\n", i, bucketIndices[i]);
