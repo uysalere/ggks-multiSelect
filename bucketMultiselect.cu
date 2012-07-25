@@ -519,6 +519,9 @@ namespace BucketMultiselect{
     //we must update K since we have reduced the problem size to elements in the kth bucket
     // get the index of the first element
     // add the number of elements    
+    uint bucketIndices[kListCount];  
+    bucketIndices[0] = 0;
+
     markedBuckets[0] = kthBuckets[0];
     reindexCounter[0] = 0;
     numMarkedBuckets = 1;
@@ -530,7 +533,9 @@ namespace BucketMultiselect{
         reindexCounter[numMarkedBuckets] = reindexCounter[numMarkedBuckets-1] + h_bucketCount[kthBuckets[i-1]];
         numMarkedBuckets++;
       }
-      kList[i] = reindexCounter[numMarkedBuckets-1] + kList[i] - kthBucketScanner[i];
+      //kList[i] = reindexCounter[numMarkedBuckets-1] + kList[i] - kthBucketScanner[i];
+      bucketIndices[i] = reindexCounter[numMarkedBuckets-2] + h_bucketCount[kthBuckets[i-1]];;
+      kList[i] = kList[i] - kthBucketScanner[i];
     }
 
     //store the length of the newly copied elements    
@@ -583,6 +588,7 @@ namespace BucketMultiselect{
 
     timing(0, 10);
     // sort the vector
+    /*
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
     
@@ -590,7 +596,23 @@ namespace BucketMultiselect{
     for (int i = 0; i < kListCount; i++) {
       //printf("kList[%d] = %u\n", i, kList[i]);
       CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+      }
+    */
+
+    printf("pass1\n");
+    for (int i = 0; i < kListCount; i++) 
+      printf("bucketIndices %d = %u\n", i, bucketIndices[i]);
+    for (int i = 0; i < kListCount - 1; i++) {
+    thrust::device_ptr<T>newInput_ptr(newInput + bucketIndices[i]);
+      thrust::sort(newInput_ptr, newInput_ptr + bucketIndices[i+1] - bucketIndices[i] - 1);
+      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i]  + bucketIndices[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+      printf("pass2 %d \n", i);
     }
+    printf("pass3pre\n");
+    thrust::device_ptr<T>newInput_ptr(newInput + bucketIndices[kListCount - 1]);
+    thrust::sort(newInput_ptr, newInput_ptr + newInputLength - bucketIndices[kListCount - 1]);
+    CUDA_CALL(cudaMemcpy(output + kIndices[kListCount - 1], newInput + kList[kListCount - 1] + bucketIndices[kListCount - 1] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+    printf("pass3\n");
     timing(1, 10);
     
     /*
