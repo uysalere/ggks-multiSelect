@@ -291,10 +291,18 @@ namespace BucketMultiselect{
   __global__ void copyElements(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, int offset) {
  
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int threadIndex;
+    int loop = numBuckets / MAX_THREADS_PER_BLOCK;
 
     extern __shared__ uint sharedBuckets[];
-    if (threadIdx.x < numBuckets)
-      sharedBuckets[threadIdx.x] = buckets[threadIdx.x];
+
+
+    for (int i = 0; i <= loop; i++) {      
+      threadIndex = i * blockDim.x + threadIdx.x;
+      if(threadIndex < numBuckets) {
+        sharedBuckets[threadIndex]=buckets[threadIndex];
+      }
+    }
 
     syncthreads();
 
@@ -334,14 +342,19 @@ namespace BucketMultiselect{
   template <typename T>
   __global__ void copyElementsBlocked(T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, uint offset, uint * d_bucketCount, int numTotalBuckets){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int threadIndex;
+    int loop = numBuckets / MAX_THREADS_PER_BLOCK;
 
     extern __shared__ uint array[];
     uint * sharedBucketCounts= (uint*)array;
     uint * sharedBuckets= (uint*)&array[numBuckets];
-    //extern __shared__ uint sharedBucketCounts[];
-    if(threadIdx.x < numBuckets) {
-      sharedBuckets[threadIdx.x]=buckets[threadIdx.x];
-      sharedBucketCounts[threadIdx.x] = d_bucketCount[blockIdx.x * numTotalBuckets + sharedBuckets[threadIdx.x]];
+
+    for (int i = 0; i <= loop; i++) {      
+      threadIndex = i * blockDim.x + threadIdx.x;
+      if(threadIndex < numBuckets) {
+        sharedBuckets[threadIndex]=buckets[threadIndex];
+        sharedBucketCounts[threadIndex] = d_bucketCount[blockIdx.x * numTotalBuckets + sharedBuckets[threadIndex]];
+      }
     }
     
     syncthreads();
@@ -384,18 +397,16 @@ namespace BucketMultiselect{
     
   }
 
-  __global__ void reindexCounts(uint * d_bucketCount, const int numBuckets, const int numBlocks, uint * d_reindexCounter, uint * d_uniqueBuckets) {
-    int index = d_uniqueBuckets[threadIdx.x];
-    int add = d_reindexCounter[threadIdx.x];
+  __global__ void reindexCounts(uint * d_bucketCount, const int numBuckets, const int numBlocks, uint * d_reindexCounter, uint * d_markedBuckets, const int numUniqueBuckets) {
+    int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 
-    for(int j=0; j<numBlocks; j++) 
-      d_bucketCount[index + numBuckets*j] += (uint) add;
-    /*
-      for(int j=numBlocks; j>0; j--) 
-      d_bucketCount[index + numBuckets*j] = d_bucketCount[index + numBuckets*(j-1)] +  add;
+    if(threadIndex<numUniqueBuckets) {
+      int index = d_markedBuckets[threadIndex];
+      int add = d_reindexCounter[threadIndex];
 
-      d_bucketCount[index] =  add;
-    */
+      for(int j=0; j<numBlocks; j++) 
+        d_bucketCount[index + numBuckets*j] += (uint) add;
+    }
   }
 
   /// ***********************************************************
@@ -955,6 +966,7 @@ namespace BucketMultiselect{
     newInputLength = reindexCounter[numUniqueBuckets-1] + h_bucketCount[kthBuckets[kListCount - 1]];
 
     printf("bucketmultiselectBlocked total kbucket_count = %d\n", newInputLength);
+    printf("numMarkedBuckets = %d\n", numUniqueBuckets);
 
     CUDA_CALL(cudaMalloc(&d_reindexCounter, numUniqueBuckets * sizeof(uint)));
     CUDA_CALL(cudaMalloc(&d_uniqueBuckets, numUniqueBuckets * sizeof(uint)));
@@ -962,7 +974,7 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMemcpy(d_reindexCounter, reindexCounter, numUniqueBuckets * sizeof(uint), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(d_uniqueBuckets, uniqueBuckets, numUniqueBuckets * sizeof(uint), cudaMemcpyHostToDevice));
 
-    reindexCounts<<<1, numUniqueBuckets>>>(d_bucketCount, numBuckets, numBlocks, d_reindexCounter, d_uniqueBuckets);
+    reindexCounts<<<ceil((float)numUniqueBuckets/threadsPerBlock), threadsPerBlock>>>(d_bucketCount, numBuckets, numBlocks, d_reindexCounter, d_uniqueBuckets, numUniqueBuckets);
 
     /// ***********************************************************
     /// ****STEP 7: Copy the kth buckets
@@ -979,7 +991,7 @@ namespace BucketMultiselect{
     timing(0, 9);
  
     //copyElements<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
-    copyElementsBlocked<<<numBlocks, threadsPerBlock, numBuckets * 2 * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset, d_bucketCount, numBuckets);
+    copyElementsBlocked<<<numBlocks, threadsPerBlock, numUniqueBuckets * 2 * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset, d_bucketCount, numBuckets);
   
     timing(1, 9);
 
