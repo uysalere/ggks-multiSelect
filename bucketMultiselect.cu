@@ -838,7 +838,7 @@ namespace BucketMultiselect{
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
     int numBlocks = blocks;
-    int numBuckets = 4096;
+    int numBuckets = 8192;
     int offset = blocks * threads;
 
     // variables for the randomized selection
@@ -1000,14 +1000,6 @@ namespace BucketMultiselect{
     /// and finito
     /// ***********************************************************
 
-    // sort the vector
-    thrust::device_ptr<T>newInput_ptr(newInput);
-    thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
-
-    //printf("newInputLength = %d\n", newInputLength);
-    for (register int i = 0; i < kListCount; i++) 
-      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
-
     //free all used memory
     cudaFree(d_pivots);
     cudaFree(d_slopes); 
@@ -1017,6 +1009,15 @@ namespace BucketMultiselect{
     cudaFree(d_uniqueBuckets); 
     cudaFree(d_uniqueBucketIndexCounter); 
     cudaFree(d_reindexCounter);  
+
+    // sort the vector
+    thrust::device_ptr<T>newInput_ptr(newInput);
+    thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
+
+    //printf("newInputLength = %d\n", newInputLength);
+    for (register int i = 0; i < kListCount; i++) 
+      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+
 
     cudaFree(newInput); 
 
