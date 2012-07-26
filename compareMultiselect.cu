@@ -101,7 +101,7 @@ void generateRandoms (uint * randoms, uint numRandoms, uint vectorSize) {
 
 using namespace std;
 template<typename T>
-void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint numTests, uint *algorithmsToTest, uint generateType, char* fileNamecsv) {
+void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint numTests, uint *algorithmsToTest, uint generateType, char* fileNamecsv, int numPivots, int numBuckets) {
   T *h_vec, *h_vec_copy;
   float timeArray[NUMBEROFALGORITHMS][numTests];
   T * resultsArray[NUMBEROFALGORITHMS][numTests];
@@ -116,7 +116,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   ofstream fileCsv;
   timeval t1;
  
-  typedef results_t<T>* (*ptrToTimingFunction)(T*, uint, uint *, uint);
+  typedef results_t<T>* (*ptrToTimingFunction)(T*, uint, uint *, uint, int, int);
   typedef void (*ptrToGeneratingFunction)(T*, uint, curandGenerator_t);
 
   //these are the functions that can be called
@@ -174,7 +174,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
 
         //run timing function j
         printf("TESTING: %u\n", j);
-        temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kCount);
+        temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kCount, numPivots, numBuckets);
 
         //record the time result
         timeArray[j][i] = temp->time;
@@ -264,23 +264,13 @@ void runTests(uint generateType, char* fileName, uint startPower, uint stopPower
   uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
   uint size;
   uint i;
-  uint arrayOfKs[stopK+1];
-  
+  uint arrayOfKs[stopK + 1];
+  int arrayOfNumPivots[] = {9, 17};
+  int arrayOfNumPivotSize = 2;
+  int arrayOfNumBuckets[] = {1024, 2048, 4096, 8192};
+  int arrayOfNumBucketSize = 4; 
   
   for(size = (1 << startPower); size <= (1 << stopPower); size *= 2) {
-    /*
-    //calculate k values
-    arrayOfKs[0] = 2;
-    //  arrayOfKs[1] = (uint) (.01 * (float) size);
-    //  arrayOfKs[2] = (uint) (.025 * (float) size);
-    for(i = 1; i <= num - 2; i++) 
-    arrayOfKs[i] = (uint) (( i / (float) num ) * size);
-    
-    //  arrayOfKs[num-3] = (uint) (.9975 * (float) size);
-    //  arrayOfKs[num-2] = (uint) (.999 * (float) size);
-    arrayOfKs[num-1] = (uint) (size - 2); 
-    */
-
     generateRandoms(arrayOfKs, stopK+1, size);
 
     /*
@@ -294,7 +284,11 @@ void runTests(uint generateType, char* fileName, uint startPower, uint stopPower
       cudaDeviceReset();
       cudaThreadExit();
       printf("NOW ADDING ANOTHER K\n\n");
-      compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, fileName);
+      for (int j = 0; j < arrayOfNumPivotSize; j++)
+        for (int k = 0; k < arrayOfNumBucketSize; k++) {
+          printf("Now testing with numPivots = %d, numBuckets = %d\n", arrayOfNumPivots[j], arrayOfNumBuckets[k]);
+          compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, fileName, arrayOfNumPivots[j], arrayOfNumBuckets[k]);
+        }
     }
   }
 }

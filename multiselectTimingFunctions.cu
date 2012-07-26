@@ -31,7 +31,7 @@ void wrapupForTiming(cudaEvent_t &start, cudaEvent_t &stop, float time, results_
 //          THE SORT AND CHOOSE TIMING FUNCTION
 /////////////////////////////////////////////////////////////////
 template<typename T>
-results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kVals, uint kCount) {
+results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kVals, uint kCount, int numPivots, int numBuckets) {
   T * d_vec;
   results_t<T> * result;
   float time;
@@ -58,7 +58,7 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
 
 // FUNCTION TO TIME BUCKET MULTISELECT
 template<typename T>
-results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount) {
+results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount, int numPivots, int numBuckets) {
   T * d_vec;
   results_t<T> * result;
   float time;
@@ -71,7 +71,7 @@ results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, 
   cudaEventRecord(start, 0);
 
   // bucketMultiselectWrapper (T * d_vector, int length, uint * kVals_ori, uint kCount, T * outputs, int blocks, int threads)
-  BucketMultiselect::bucketMultiselectWrapper(d_vec, numElements, kVals, kCount, result->vals, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+  BucketMultiselect::bucketMultiselectWrapper(d_vec, numElements, kVals, kCount, result->vals, dp.multiProcessorCount, dp.maxThreadsPerBlock, numPivots, numBuckets);
  
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
@@ -84,7 +84,7 @@ results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, 
 
 // FUNCTION TO TIME NAIVE BUCKET MULTISELECT
 template<typename T>
-results_t<T>* timeNaiveBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount) {
+results_t<T>* timeNaiveBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount, int numPivots, int numBuckets) {
   T * d_vec;
   results_t<T> * result;
   float time;

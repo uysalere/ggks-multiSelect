@@ -25,8 +25,6 @@ namespace BucketMultiselect{
 
 #define MAX_THREADS_PER_BLOCK 1024
 #define CUTOFF_POINT 200000 
-#define NUM_PIVOTS 17
-
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {      \
       printf("Error at %s:%d\n",__FILE__,__LINE__);     \
       return EXIT_FAILURE;}} while(0)
@@ -417,7 +415,7 @@ namespace BucketMultiselect{
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
-  T phaseOne (T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int pass = 0){    
+  T phaseOne (T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int numPivots, int numBuckets) {    
     /// ***********************************************************
     /// ****STEP 1: Find Min and Max of the whole vector
     /// ****We don't need to go through the rest of the algorithm if it's flat
@@ -451,11 +449,9 @@ namespace BucketMultiselect{
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
     int numBlocks = blocks;
-    int numBuckets = 8192;
     int offset = blocks * threads;
 
     // variables for the randomized selection
-    int numPivots = NUM_PIVOTS;
     int sampleSize = 1024;
 
     // pivot variables
@@ -660,7 +656,7 @@ namespace BucketMultiselect{
   }
 
   template <typename T>
-  T bucketMultiselectWrapper (T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads) { 
+  T bucketMultiselectWrapper (T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads, int numPivots, int numBuckets) { 
 
     uint kList[kListCount];
     for (register int i = 0; i < kListCount; i++) 
@@ -676,7 +672,7 @@ namespace BucketMultiselect{
     //  if(length <= CUTOFF_POINT) 
     //  phaseTwo(d_vector, length, kList, kListCount, outputs, blocks, threads);
     //  else 
-    phaseOne (d_vector, length, kList, kListCount, outputs, blocks, threads);
+    phaseOne (d_vector, length, kList, kListCount, outputs, blocks, threads, numPivots, numBuckets);
     // void phaseOneR(T* d_vector, int length, uint * kList, uint kListCount, T * outputs, int blocks, int threads, int pass = 0){
 
     return 0;
