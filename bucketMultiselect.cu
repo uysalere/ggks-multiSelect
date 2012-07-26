@@ -90,9 +90,16 @@ namespace BucketMultiselect{
     __shared__ int sharedNumSmallBuckets;
     sharedNumSmallBuckets = numBuckets / (numPivots-1);
 
+    extern __shared__ uint array[];
+
+    uint * sharedBuckets = (uint *)array;
+    double * sharedSlopes = (double *)&sharedBuckets[numBuckets];
+    T * sharedPivots = (T *)&sharedSlopes[numPivots-1];
+    /*
     extern __shared__ uint sharedBuckets[];
     __shared__ double sharedSlopes[NUM_PIVOTS-1];
     __shared__ T sharedPivots[NUM_PIVOTS];
+    */
   
     //reading bucket counts into shared memory where increments will be performed
     for (int i = 0; i < (numBuckets / MAX_THREADS_PER_BLOCK); i++) 
@@ -548,8 +555,7 @@ namespace BucketMultiselect{
     timing(0, 5);
 
     //Distribute elements into their respective buckets
-    assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
-
+    assignSmartBucket<<<numBlocks, threadsPerBlock,  numPivots * sizeof(T) + (numPivots-1) * sizeof(double) + numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
     timing(1, 5);
     timing(0, 21);
 
