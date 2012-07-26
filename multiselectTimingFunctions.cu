@@ -107,29 +107,3 @@ results_t<T>* timeNaiveBucketMultiselect (T * h_vec, uint numElements, uint * kV
   cudaFree(d_vec);
   return result;
 }
-
-// FUNCTION TO TIME BUCKET MULTISELECT
-template<typename T>
-results_t<T>* timeBucketMultiselectBlocked (T * h_vec, uint numElements, uint * kVals, uint kCount) {
-  T * d_vec;
-  results_t<T> * result;
-  float time;
-  cudaEvent_t start, stop;
-  cudaDeviceProp dp;
-  cudaGetDeviceProperties(&dp, 0);
-
-  setupForTiming(start, stop, h_vec, &d_vec, &result, numElements, kCount);
- 
-  cudaEventRecord(start, 0);
-
-  // bucketMultiselectWrapper (T * d_vector, int length, uint * kVals_ori, uint kCount, T * outputs, int blocks, int threads)
-  BucketMultiselect::bucketMultiselectBlockedWrapper(d_vec, numElements, kVals, kCount, result->vals, dp.multiProcessorCount, dp.maxThreadsPerBlock);
- 
-  cudaEventRecord(stop, 0);
-  cudaEventSynchronize(stop);
-  cudaEventElapsedTime(&time, start, stop);
-
-  wrapupForTiming(start, stop, time, result);
-  cudaFree(d_vec);
-  return result;
-}
