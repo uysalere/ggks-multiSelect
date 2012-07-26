@@ -130,7 +130,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   namesOfGeneratingFunctions = returnNamesOfGenerators<T>();
   arrayOfGenerators = (ptrToGeneratingFunction *) returnGenFunctions<T>();
 
-  printf("Files will be written to %s\n", fileNamecsv);
+  // printf("Files will be written to %s\n", fileNamecsv);
   fileCsv.open(fileNamecsv, ios_base::app);
   
   //zero out the totals and times won
@@ -145,7 +145,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   curandGenerator_t generator;
   srand(unsigned(time(NULL)));
 
-  printf("The distribution is: %s\n", namesOfGeneratingFunctions[generateType]);
+  //  printf("The distribution is: %s\n", namesOfGeneratingFunctions[generateType]);
   for(i = 0; i < numTests; i++) {
     // cudaDeviceReset();
     gettimeofday(&t1, NULL);
@@ -242,6 +242,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
             PrintFunctions::printBinary(resultsArray[j][i][m]);
             std::cout << "Right:\t";
             PrintFunctions::printBinary(resultsArray[0][i][m]);
+            break;
           }
 
   for(i = 0; i < numTests; i++) 
@@ -286,7 +287,7 @@ void runTests(uint generateType, char* fileName, uint startPower, uint stopPower
       printf("NOW ADDING ANOTHER K\n\n");
       for (int j = 0; j < arrayOfNumPivotSize; j++)
         for (int k = 0; k < arrayOfNumBucketSize; k++) {
-          printf("Now testing with numPivots = %d, numBuckets = %d\n", arrayOfNumPivots[j], arrayOfNumBuckets[k]);
+          printf("\n\nNow testing with numPivots = %d, numBuckets = %d\n", arrayOfNumPivots[j], arrayOfNumBuckets[k]);
           compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, fileName, arrayOfNumPivots[j], arrayOfNumBuckets[k]);
         }
     }
