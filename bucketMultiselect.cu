@@ -67,7 +67,7 @@ namespace BucketMultiselect{
 
   //This function initializes a vector to all zeros on the host (CPU)
   template<typename T>
-  void setToAllZero(T * deviceVector, int length){
+  void setToAllZero(T * deviceVector, int length) {
     cudaMemset(deviceVector, 0, length * sizeof(T));
   }
 
@@ -77,26 +77,29 @@ namespace BucketMultiselect{
   /// **** HELPER GPU FUNCTIONS-KERNELS
   /// ***********************************************************
   /// ***********************************************************
-  
+
   //this function assigns elements to buckets based off of a randomized sampling of the elements in the vector
   template <typename T>
   __global__ void assignSmartBucket(T * d_vector, int length, int numBuckets, double * slopes, T * pivots, int numPivots, uint* elementToBucket, uint* bucketCount, int offset){
   
     int index = blockDim.x * blockIdx.x + threadIdx.x;
-    int bucketIndex;
+    uint bucketIndex;
     int threadIndex = threadIdx.x;  
     
     //variables in shared memory for fast access
     __shared__ int sharedNumSmallBuckets;
-    sharedNumSmallBuckets = numBuckets / (numPivots-1);
-
+    if (threadIndex < 1) 
+      sharedNumSmallBuckets = numBuckets / (numPivots-1);
+    
     extern __shared__ uint array[];
-
     uint * sharedBuckets = (uint *)array;
     double * sharedSlopes = (double *)&sharedBuckets[numBuckets];
     T * sharedPivots = (T *)&sharedSlopes[numPivots-1];
     /*
-    extern __shared__ uint sharedBuckets[];
+    uint * sharedBuckets = (uint *)array;
+    double * sharedSlopes = (double *)&sharedBuckets[numBuckets];
+    T * sharedPivots = (T *)&sharedSlopes[numPivots-1];
+    // statically allocating the array gives faster results
     __shared__ double sharedSlopes[NUM_PIVOTS-1];
     __shared__ T sharedPivots[NUM_PIVOTS];
     */
@@ -107,8 +110,8 @@ namespace BucketMultiselect{
         sharedBuckets[i * MAX_THREADS_PER_BLOCK + threadIndex] = 0;
 
     if(threadIndex < numPivots) {
-      sharedPivots[threadIndex] = pivots[threadIndex];
-      if(threadIndex < numPivots - 1)
+      *(sharedPivots + threadIndex) = *(pivots + threadIndex);
+      if(threadIndex < numPivots-1) 
         sharedSlopes[threadIndex] = slopes[threadIndex];
     }
     syncthreads();
@@ -167,7 +170,7 @@ namespace BucketMultiselect{
     for (int i = 0; i < (numBuckets / MAX_THREADS_PER_BLOCK); i++) 
       if (threadIndex < numBuckets) 
         //atomicAdd(bucketCount + blockIdx.x * numBuckets + i * MAX_THREADS_PER_BLOCK + threadIndex, sharedBuckets[i * MAX_THREADS_PER_BLOCK + threadIndex]);
-        *(bucketCount + blockIdx.x * numBuckets + i * MAX_THREADS_PER_BLOCK + threadIndex) = sharedBuckets[i * MAX_THREADS_PER_BLOCK + threadIndex];
+        *(bucketCount + blockIdx.x * numBuckets + i * MAX_THREADS_PER_BLOCK + threadIndex) = *(sharedBuckets + i * MAX_THREADS_PER_BLOCK + threadIndex);
   }
  
 
@@ -263,7 +266,6 @@ namespace BucketMultiselect{
         if (buckets[maxBucketIndex] == temp) 
           //newArray[atomicDec(d_bucketCount + blockIdx.x * numTotalBuckets + temp, length)-1] = d_vector[i];
           newArray[atomicDec(sharedBucketCounts + maxBucketIndex, length)-1] = d_vector[i];
-        
       }
     }
 
@@ -555,7 +557,7 @@ namespace BucketMultiselect{
     timing(0, 5);
 
     //Distribute elements into their respective buckets
-    assignSmartBucket<<<numBlocks, threadsPerBlock,  numPivots * sizeof(T) + (numPivots-1) * sizeof(double) + numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
+    assignSmartBucket<T><<<numBlocks, threadsPerBlock,  numPivots * sizeof(T) + (numPivots-1) * sizeof(double) + numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
     timing(1, 5);
     timing(0, 21);
 
@@ -624,7 +626,7 @@ namespace BucketMultiselect{
     timing(0, 9);
  
     //copyElements<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
-    copyElements<<<numBlocks, threadsPerBlock, numUniqueBuckets * 2 * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset, d_bucketCount, numBuckets);
+    copyElements<T><<<numBlocks, threadsPerBlock, numUniqueBuckets * 2 * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset, d_bucketCount, numBuckets);
   
     timing(1, 9);
 
