@@ -101,7 +101,7 @@ void generateRandoms (uint * randoms, uint numRandoms, uint vectorSize) {
 
 using namespace std;
 template<typename T>
-void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint numTests, uint *algorithmsToTest, uint generateType, char* fileNamecsv, int numPivots, int numBuckets) {
+float compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint numTests, uint *algorithmsToTest, uint generateType, char* fileNamecsv, int numPivots, int numBuckets) {
   T *h_vec, *h_vec_copy;
   float timeArray[NUMBEROFALGORITHMS][numTests];
   T * resultsArray[NUMBEROFALGORITHMS][numTests];
@@ -110,6 +110,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   uint timesWon[NUMBEROFALGORITHMS];
   uint i,j,m,x;
   int runOrder[NUMBEROFALGORITHMS];
+  float besttime;
 
   unsigned long long seed;
   results_t<T> *temp;
@@ -173,7 +174,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
       if(algorithmsToTest[j]){
 
         //run timing function j
-        printf("TESTING: %u\n", j);
+        //  printf("TESTING: %u\n", j);
         temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kCount, numPivots, numBuckets);
 
         //record the time result
@@ -181,9 +182,10 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
         //record the value returned
         resultsArray[j][i] = temp->vals;
         //update the current "winner" if necessary
-        if(timeArray[j][i] < currentWinningTime){
+        if(timeArray[j][i] < currentWinningTime && j != 0){
           currentWinningTime = temp->time;
           winnerArray[i] = j;
+          besttime = currentWinningTime;
         }
 
         //perform clean up 
@@ -220,7 +222,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   for(i = 0; i < numTests;i++)
     timesWon[winnerArray[i]]++;
 
-  printf("\n\n");
+  printf("\n");
 
   //print out the average times
   for(i = 0; i < NUMBEROFALGORITHMS; i++)
@@ -228,8 +230,8 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
       printf("%-20s averaged: %f ms\n", namesOfMultiselectTimingFunctions[i], totalTimesPerAlgorithm[i] / numTests);
 
   for(i = 0; i < NUMBEROFALGORITHMS; i++)
-    if(algorithmsToTest[i])
-      printf("%s won %u times\n", namesOfMultiselectTimingFunctions[i], timesWon[i]);
+    if(algorithmsToTest[i]);
+      //    printf("%s won %u times\n", namesOfMultiselectTimingFunctions[i], timesWon[i]);
 
   for(i = 0; i < numTests; i++)
     for(j = 1; j < NUMBEROFALGORITHMS; j++)
@@ -256,6 +258,9 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   free(h_vec_copy);
   //close the file
   fileCsv.close();
+
+
+  return besttime;
 }
 
 
@@ -271,6 +276,11 @@ void runTests(uint generateType, char* fileName, uint startPower, uint stopPower
   int arrayOfNumBuckets[] = {1024, 2048, 4096, 8192};
   int arrayOfNumBucketSize = 4; 
   
+  float winningTime = 100000;
+  float time;
+  int winningPivots = -1;
+  int winningBuckets = -1;
+
   for(size = (1 << startPower); size <= (1 << stopPower); size *= 2) {
     generateRandoms(arrayOfKs, stopK+1, size);
 
@@ -284,12 +294,23 @@ void runTests(uint generateType, char* fileName, uint startPower, uint stopPower
     for(i = startK; i <= stopK; i+=kJump) {
       cudaDeviceReset();
       cudaThreadExit();
-      printf("NOW ADDING ANOTHER K\n\n");
-      for (int j = 0; j < arrayOfNumPivotSize; j++)
+      printf("\n\n\nNOW ADDING ANOTHER K = %u, size = %u\n\n\n", i, size);
+      for (int j = 0; j < arrayOfNumPivotSize; j++) {
         for (int k = 0; k < arrayOfNumBucketSize; k++) {
-          printf("\n\nNow testing with numPivots = %d, numBuckets = %d\n", arrayOfNumPivots[j], arrayOfNumBuckets[k]);
-          compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, fileName, arrayOfNumPivots[j], arrayOfNumBuckets[k]);
+          printf("Now testing with numPivots = %d, numBuckets = %d\n", arrayOfNumPivots[j], arrayOfNumBuckets[k]);
+          time = compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, fileName, arrayOfNumPivots[j], arrayOfNumBuckets[k]);
+          
+          if (time < winningTime) {
+            winningTime = time;
+            winningPivots = arrayOfNumPivots[j];
+            winningBuckets = arrayOfNumBuckets[k];
+          }
         }
+      }
+      printf ("winning pivots = %d, winning buckets = %d, winning time = %f\n\n\n", winningPivots, winningBuckets, winningTime);
+
+      winningPivots = winningBuckets = -1;
+      winningTime = 100000;
     }
   }
 }
