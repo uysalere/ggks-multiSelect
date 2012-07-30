@@ -329,49 +329,6 @@ namespace BucketMultiselect{
   __global__ void enlargeIndexAndGetElements (float * in, uint * out, uint * list, int size) {
     *(out + blockIdx.x * blockDim.x + threadIdx.x) = (uint) *(list + ((int) (*(in + blockIdx.x * blockDim.x + threadIdx.x) * size)));
   }
-
-  template <typename T>
-  void generatePivots (uint * pivots, double * slopes, uint * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, uint min, uint max) {
-  
-    float * d_randomFloats;
-    uint * d_randomInts;
-    int endOffset = 22;
-    int pivotOffset = (sizeOfSample - endOffset * 2) / (numPivots - 3);
-    int numSmallBuckets = totalSmallBuckets / (numPivots - 1);
-
-    cudaMalloc (&d_randomFloats, sizeof (float) * sizeOfSample);
-  
-    d_randomInts = (uint *) d_randomFloats;
-
-    createRandomVector (d_randomFloats, sizeOfSample);
-
-    // converts randoms floats into elements from necessary indices
-    enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randomFloats, d_randomInts, d_list, sizeOfVector);
-
-    pivots[0] = min;
-    pivots[numPivots-1] = max;
-
-    thrust::device_ptr<T>randoms_ptr(d_randomInts);
-    thrust::sort(randoms_ptr, randoms_ptr + sizeOfSample);
-
-    cudaThreadSynchronize();
-
-    // set the pivots which are next to the min and max pivots using the random element endOffset away from the ends
-    cudaMemcpy (pivots + 1, d_randomInts + endOffset - 1, sizeof (uint), cudaMemcpyDeviceToHost);
-    cudaMemcpy (pivots + numPivots - 2, d_randomInts + sizeOfSample - endOffset - 1, sizeof (uint), cudaMemcpyDeviceToHost);
-    slopes[0] = numSmallBuckets / (double) (pivots[1] - pivots[0]);
-
-    for (register int i = 2; i < numPivots - 2; i++) {
-      cudaMemcpy (pivots + i, d_randomInts + pivotOffset * (i - 1) + endOffset - 1, sizeof (uint), cudaMemcpyDeviceToHost);
-      slopes[i - 1] = numSmallBuckets / (double) (pivots[i] - pivots[i - 1]);
-    }
-
-    slopes[numPivots - 3] = numSmallBuckets / (double) (pivots[numPivots - 2] - pivots[numPivots - 3]);
-    slopes[numPivots - 2] = numSmallBuckets / (double) (pivots[numPivots - 1] - pivots[numPivots - 2]);
-
-    cudaFree(d_randomFloats);
-    cudaFree(d_randomInts);
-  }
   
   template <typename T>
   void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, T min, T max) {

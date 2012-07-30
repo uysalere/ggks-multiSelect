@@ -240,3 +240,28 @@ results_t<T>* timeRandomizedSelect(T* hostVec, uint size, uint k)
   return result;
 
 }
+template<typename T>
+results_t<T>* timeRandomizedBlockedBucketSelect(T* hostVec, uint size, uint k){
+  cudaEvent_t start, stop;
+  float time;
+  results_t<T> *result;
+  T retFromSelect;
+  T* deviceVec;
+  cudaDeviceProp dp;
+  cudaGetDeviceProperties(&dp,0);
+
+
+  setupForTiming(start,stop, &deviceVec, hostVec, size, &result);
+
+  cudaEventRecord(start, 0);
+
+  retFromSelect = RandomizedBlockedBucketSelect::randomizedBlockedBucketSelectWrapper(deviceVec, size, k, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+ 
+  cudaEventRecord(stop, 0);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&time,start,stop);
+
+  wrapupForTiming(start,stop, deviceVec, result, time, retFromSelect);
+  return result;
+
+}
