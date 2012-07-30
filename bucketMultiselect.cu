@@ -25,7 +25,6 @@ namespace BucketMultiselect{
 
 #define MAX_THREADS_PER_BLOCK 1024
 #define CUTOFF_POINT 200000 
-#define NUM_PIVOTS 17
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {      \
       printf("Error at %s:%d\n",__FILE__,__LINE__);     \
@@ -223,7 +222,7 @@ namespace BucketMultiselect{
 
   //copy elements in the kth bucket to a new array
   template <typename T>
-  __global__ void copyElements (T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint* counter, uint offset, uint * d_bucketCount, int numTotalBuckets){
+  __global__ void copyElements (T* d_vector, int length, uint* elementToBucket, uint * buckets, const int numBuckets, T* newArray, uint offset, uint * d_bucketCount, int numTotalBuckets){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int threadIndex;
     int loop = numBuckets / MAX_THREADS_PER_BLOCK;
@@ -419,7 +418,7 @@ namespace BucketMultiselect{
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
-  T phaseOne (T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int pass = 0){    
+  T phaseOne (T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int numBuckets, int numPivots) {    
     /// ***********************************************************
     /// ****STEP 1: Find Min and Max of the whole vector
     /// ****We don't need to go through the rest of the algorithm if it's flat
@@ -453,11 +452,9 @@ namespace BucketMultiselect{
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
     int numBlocks = blocks;
-    int numBuckets = 8192;
     int offset = blocks * threads;
 
     // variables for the randomized selection
-    int numPivots = NUM_PIVOTS;
     int sampleSize = 1024;
 
     // pivot variables
@@ -490,8 +487,7 @@ namespace BucketMultiselect{
     uint uniqueBuckets[kListCount];
     uint * d_uniqueBuckets; 
     uint reindexCounter[kListCount];  
-    uint * d_reindexCounter;  
-    uint * d_uniqueBucketIndexCounter;    
+    uint * d_reindexCounter;    
 
     CUDA_CALL(cudaMalloc(&d_kList, kListCount * sizeof(uint)));
     CUDA_CALL(cudaMalloc(&d_kIndices, kListCount * sizeof (uint)));
@@ -617,16 +613,12 @@ namespace BucketMultiselect{
 
     // allocate memories
     CUDA_CALL(cudaMalloc(&newInput, newInputLength * sizeof(T)));
-    CUDA_CALL(cudaMalloc(&d_uniqueBucketIndexCounter, sizeof(uint)));
-
-    //copy unique bucket stuff into device
-    setToAllZero<uint>(d_uniqueBucketIndexCounter, 1);
    
     timing(1, 8);
     timing(0, 9);
  
     //copyElements<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
-    copyElements<T><<<numBlocks, threadsPerBlock, numUniqueBuckets * 2 * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset, d_bucketCount, numBuckets);
+    copyElements<T><<<numBlocks, threadsPerBlock, numUniqueBuckets * 2 * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, offset, d_bucketCount, numBuckets);
   
     timing(1, 9);
 
@@ -642,7 +634,6 @@ namespace BucketMultiselect{
     cudaFree(d_elementToBucket);  
     cudaFree(d_bucketCount); 
     cudaFree(d_uniqueBuckets); 
-    cudaFree(d_uniqueBucketIndexCounter); 
     cudaFree(d_reindexCounter);  
 
     timing(0, 10);
@@ -658,30 +649,39 @@ namespace BucketMultiselect{
 
     cudaFree(newInput); 
 
-    return 0;
+    return 1;
   }
 
   template <typename T>
   T bucketMultiselectWrapper (T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads) { 
 
+    int numBuckets = 8192;
     uint kList[kListCount];
     for (register int i = 0; i < kListCount; i++) 
       kList[i] = length - kList_ori[i] + 1;
    
-    /*
-      printf("start here\n");
-      printf("k-length: %d\n", length);
-      for(int i=0; i<kListCount ; i++)
-      printf("k-%d: %d\n", i, kList[i]);
-    */
+    // optimize numBuckets based on experimentation
+    if (length <= 524288)
+      numBuckets = 4096;
+    else if (length <= 1048576 && kListCount <= 188)
+      numBuckets = 4096;
+    else if (length <= 2097152 && kListCount <= 94)
+      numBuckets = 4096;
+    else if (length <= 4194304 && kListCount <= 48)
+      numBuckets = 4096;
+    else if (length <= 8388608 && kListCount <= 20)
+      numBuckets = 4096;
+    else if (length <= 16777216 && kListCount <= 10)
+      numBuckets = 4096;
+    else if (length <= 33554432 && kListCount <= 6)
+      numBuckets = 4096;
+    else if (length <= 67108864 && kListCount <= 4)
+      numBuckets = 4096;
 
-    //  if(length <= CUTOFF_POINT) 
-    //  phaseTwo(d_vector, length, kList, kListCount, outputs, blocks, threads);
-    //  else 
-    phaseOne (d_vector, length, kList, kListCount, outputs, blocks, threads);
-    // void phaseOneR(T* d_vector, int length, uint * kList, uint kListCount, T * outputs, int blocks, int threads, int pass = 0){
+   
+    phaseOne (d_vector, length, kList, kListCount, outputs, blocks, threads, numBuckets, 17);
 
-    return 0;
+    return 1;
   }
 }
 
