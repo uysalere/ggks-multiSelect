@@ -423,7 +423,7 @@ namespace BucketMultiselect{
     /// ****STEP 1: Find Min and Max of the whole vector
     /// ****We don't need to go through the rest of the algorithm if it's flat
     /// ***********************************************************
-    timing(0, 1);
+    // timing(0, 1);
 
     //find max and min with thrust
     T maximum, minimum;
@@ -442,12 +442,12 @@ namespace BucketMultiselect{
       return 0;
     }
 
-    timing(1, 1);
+    // timing(1, 1);
     /// ***********************************************************
     /// ****STEP 2: Declare variables and allocate memory
     /// **** Declare Variables
     /// ***********************************************************
-    timing(0, 2);
+    // timing(0, 2);
 
     //declaring variables for kernel launches
     int threadsPerBlock = threads;
@@ -501,12 +501,12 @@ namespace BucketMultiselect{
     int newInputLength;
     T* newInput;
 
-    timing(1, 2);
+    // timing(1, 2);
     /// ***********************************************************
     /// ****STEP 3: Sort the klist
     /// and keep the old index
     /// ***********************************************************
-    timing(0, 3);
+    // timing(0, 3);
 
     CUDA_CALL(cudaMemcpy(d_kIndices, kIndices, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(d_kList, kList, kListCount * sizeof (uint), cudaMemcpyHostToDevice)); 
@@ -522,12 +522,12 @@ namespace BucketMultiselect{
     cudaFree(d_kIndices); 
     cudaFree(d_kList); 
 
-    timing(1, 3);
+    // timing(1, 3);
     /// ***********************************************************
     /// ****STEP 4: Generate Pivots and Slopes
     /// Declare slopes and pivots
     /// ***********************************************************
-    timing(0, 4);
+    // timing(0, 4);
 
     CUDA_CALL(cudaMalloc(&d_slopes, (numPivots - 1) * sizeof(double)));
     CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
@@ -545,31 +545,31 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));  
     CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice));
 
-    timing(1, 4);
+    // timing(1, 4);
     /// ***********************************************************
     /// ****STEP 5: Assign elements to buckets
     /// 
     /// ***********************************************************
-    timing(0, 5);
+    // timing(0, 5);
 
     //Distribute elements into their respective buckets
     assignSmartBucket<T><<<numBlocks, threadsPerBlock,  numPivots * sizeof(T) + (numPivots-1) * sizeof(double) + numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
-    timing(1, 5);
-    timing(0, 21);
+    // timing(1, 5);
+    // timing(0, 21);
 
     sumCounts<<<numBuckets/threadsPerBlock, threadsPerBlock>>>(d_bucketCount, numBuckets, numBlocks);
 
-    timing(1, 21);
+    // timing(1, 21);
     /// ***********************************************************
     /// ****STEP 6: Find the kth buckets
     /// and their respective update indices
     /// ***********************************************************
-    timing(0, 6);
+    // timing(0, 6);
 
     findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets, numBlocks);
 
-    timing(1, 6);
-    timing(0, 7);
+    // timing(1, 6);
+    // timing(0, 7);
 
     // we must update K since we have reduced the problem size to elements in the kth bucket
     //  get the index of the first element
@@ -590,11 +590,11 @@ namespace BucketMultiselect{
 
     newInputLength = reindexCounter[numUniqueBuckets-1] + h_bucketCount[kthBuckets[kListCount - 1]];
 
-    printf("bucketmultiselectBlocked total kbucket_count = %d\n", newInputLength);
-    printf("numMarkedBuckets = %d\n", numUniqueBuckets);
+    // printf("bucketmultiselectBlocked total kbucket_count = %d\n", newInputLength);
+    // printf("numMarkedBuckets = %d\n", numUniqueBuckets);
 
-    timing(1, 7);
-    timing(0, 22);
+    // timing(1, 7);
+    // timing(0, 22);
 
     CUDA_CALL(cudaMalloc(&d_reindexCounter, numUniqueBuckets * sizeof(uint)));
     CUDA_CALL(cudaMalloc(&d_uniqueBuckets, numUniqueBuckets * sizeof(uint)));
@@ -604,23 +604,23 @@ namespace BucketMultiselect{
 
     reindexCounts<<<ceil((float)numUniqueBuckets/threadsPerBlock), threadsPerBlock>>>(d_bucketCount, numBuckets, numBlocks, d_reindexCounter, d_uniqueBuckets, numUniqueBuckets);
 
-    timing(1, 22);
+    // timing(1, 22);
     /// ***********************************************************
     /// ****STEP 7: Copy the kth buckets
     /// only unique ones
     /// ***********************************************************
-    timing(0, 8);
+    // timing(0, 8);
 
     // allocate memories
     CUDA_CALL(cudaMalloc(&newInput, newInputLength * sizeof(T)));
    
-    timing(1, 8);
-    timing(0, 9);
+    // timing(1, 8);
+    // timing(0, 9);
  
     //copyElements<<<numBlocks, threadsPerBlock, numUniqueBuckets * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, d_uniqueBucketIndexCounter, offset);
     copyElements<T><<<numBlocks, threadsPerBlock, numUniqueBuckets * 2 * sizeof(uint)>>>(d_vector, length, d_elementToBucket, d_uniqueBuckets, numUniqueBuckets, newInput, offset, d_bucketCount, numBuckets);
   
-    timing(1, 9);
+    // timing(1, 9);
 
     /// ***********************************************************
     /// ****STEP 8: Sort
@@ -636,7 +636,7 @@ namespace BucketMultiselect{
     cudaFree(d_uniqueBuckets); 
     cudaFree(d_reindexCounter);  
 
-    timing(0, 10);
+    // timing(0, 10);
     // sort the vector
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
@@ -645,7 +645,7 @@ namespace BucketMultiselect{
     for (register int i = 0; i < kListCount; i++) 
       CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
 
-    timing(1, 10);
+    // timing(1, 10);
 
     cudaFree(newInput); 
 

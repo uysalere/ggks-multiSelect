@@ -54,8 +54,6 @@ void generateUniformZeroToFourUints (uint* input, uint length, curandGenerator_t
 ptrToUintGeneratingFunction arrayOfUintGenerators[NUMBEROFUINTDISTRIBUTIONS] = {&generateUniformUnsignedIntegers,&generateSortedArrayUints,&generateUniformZeroToFourUints};
 char* namesOfUintGeneratingFunctions[NUMBEROFUINTDISTRIBUTIONS]={"UNIFORM UNSIGNED INTEGERS","SORTED UINTS","UNIFORM 0-4"};
 
-
-
 ///////////////////////////////////////////////////////////////////
 ////           FUNCTIONS TO GENERATE FLOATS
 ///////////////////////////////////////////////////////////////////
@@ -422,7 +420,7 @@ void generateBucketKillerDoubles(double *h_vec, uint numElements, curandGenerato
      h_vec[i + 1022] = pow(2.0,(double)i);
    }
    cudaFree(d_generated);
- }
+}
 
 #define NUMBEROFDOUBLEDISTRIBUTIONS 3
 ptrToDoubleGeneratingFunction arrayOfDoubleGenerators[NUMBEROFDOUBLEDISTRIBUTIONS] = {&generateUniformDoubles,&generateNormalDoubles,
@@ -473,3 +471,88 @@ void printDistributionOptions(uint type){
     break;
   }
 }
+
+
+
+/********** K DISTRIBUTION GENERATOR FUNCTIONS ************/
+
+__host__ __device__
+unsigned int hash(unsigned int a)
+{
+  a = (a+0x7ed55d16) + (a<<12);
+  a = (a^0xc761c23c) ^ (a>>19);
+  a = (a+0x165667b1) + (a<<5);
+  a = (a+0xd3a2646c) ^ (a<<9);
+  a = (a+0xfd7046c5) + (a<<3);
+  a = (a^0xb55a4f09) ^ (a>>16);
+  return a;
+}
+
+struct RandomNumberFunctor :
+  public thrust::unary_function<unsigned int, float>
+{
+  unsigned int mainSeed;
+
+  RandomNumberFunctor(unsigned int _mainSeed) :
+    mainSeed(_mainSeed) {}
+  
+  __host__ __device__
+  float operator()(unsigned int threadIdx)
+  {
+    unsigned int seed = hash(threadIdx) * mainSeed;
+
+    thrust::default_random_engine rng(seed);
+    rng.discard(threadIdx);
+    thrust::uniform_real_distribution<float> u(0, 1);
+
+    return u(rng);
+  }
+};
+
+void generateKUniformRandom (uint * arrayOfKs, uint numRandoms, uint vectorSize, curandGenerator_t generator) {
+  float * randomFloats = (float *) malloc (numRandoms * sizeof (float));
+  float * d_randomFloats;
+
+  cudaMalloc (&d_randomFloats, sizeof (float) * numRandoms);
+  
+  timeval t1;
+  uint seed;
+
+  gettimeofday(&t1, NULL);
+  seed = t1.tv_usec * t1.tv_sec;
+  
+  thrust::device_ptr<float> d_ptr(d_randomFloats);
+  thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(numRandoms), d_ptr, RandomNumberFunctor(seed));
+
+
+  cudaMemcpy (randomFloats, d_randomFloats, numRandoms * sizeof (float), cudaMemcpyDeviceToHost);
+
+  for (int i = 0; i < numRandoms; i++)
+    arrayOfKs[i] = (uint) (randomFloats[i] * (float) vectorSize);
+    
+  cudaFree (d_randomFloats);
+  free (randomFloats);
+}
+
+void generateKUniform (uint * arrayOfKs, uint numRandoms, uint vectorSize, curandGenerator_t generator) {
+  arrayOfKs[0] = 2;
+  for (uint i = 1; i < numRandoms; i++) 
+    arrayOfKs[i] = (uint) ((i / (float) numRandoms) * vectorSize);
+}
+
+void generateKNormal (uint * arrayOfKs, uint numRandoms, uint vectorSize, curandGenerator_t generator) {
+
+
+}
+
+
+void generateKCluster (uint * arrayOfKs, uint numRandoms, uint vectorSize, curandGenerator_t generator) {
+
+
+
+}
+
+#define NUMBEROFKDISTRIBUTIONS 4
+typedef void (*ptrToKDistributionGenerator)(uint *, uint, uint, curandGenerator_t);
+ptrToKDistributionGenerator arrayOfKDistributionGenerators[NUMBEROFKDISTRIBUTIONS] = {&generateKUniformRandom, &generateKUniform, &generateKNormal, &generateKCluster};
+char* namesOfKGenerators[NUMBEROFKDISTRIBUTIONS] = {"Generate Uniform Random Ks", "Generate Uniform Ks", "Generate Normal Random Ks", "Generate Cluster Ks"};

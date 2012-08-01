@@ -37,68 +37,6 @@
 char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose Multiselect", "Bucket Multiselect", "Naive Bucket Multiselect"};
 
 
-__host__ __device__
-unsigned int hash(unsigned int a)
-{
-  a = (a+0x7ed55d16) + (a<<12);
-  a = (a^0xc761c23c) ^ (a>>19);
-  a = (a+0x165667b1) + (a<<5);
-  a = (a+0xd3a2646c) ^ (a<<9);
-  a = (a+0xfd7046c5) + (a<<3);
-  a = (a^0xb55a4f09) ^ (a>>16);
-  return a;
-}
-
-struct RandomNumberFunctor :
-  public thrust::unary_function<unsigned int, float>
-{
-  unsigned int mainSeed;
-
-  RandomNumberFunctor(unsigned int _mainSeed) :
-    mainSeed(_mainSeed) {}
-  
-  __host__ __device__
-  float operator()(unsigned int threadIdx)
-  {
-    unsigned int seed = hash(threadIdx) * mainSeed;
-
-    thrust::default_random_engine rng(seed);
-    rng.discard(threadIdx);
-    thrust::uniform_real_distribution<float> u(0, 1);
-
-    return u(rng);
-  }
-};
-
-  template <typename T>
-  void createRandomVector(T * d_vec, int size) {
-    timeval t1;
-    uint seed;
-
-    gettimeofday(&t1, NULL);
-    seed = t1.tv_usec * t1.tv_sec;
-  
-    thrust::device_ptr<T> d_ptr(d_vec);
-    thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(size), d_ptr, RandomNumberFunctor(seed));
-  }
-
-void generateRandoms (uint * randoms, uint numRandoms, uint vectorSize) {
-  float * randomFloats = (float *) malloc (numRandoms * sizeof (float));
-  float * d_randomFloats;
-
-  cudaMalloc (&d_randomFloats, sizeof (float) * numRandoms);
-  
-  createRandomVector (d_randomFloats, numRandoms);
-  
-  cudaMemcpy (randomFloats, d_randomFloats, numRandoms * sizeof (float), cudaMemcpyDeviceToHost);
-
-  for (uint i = 0; i < numRandoms; i++)
-    randoms[i] = (uint) (randomFloats[i] * (float) vectorSize);
-    
-  cudaFree (d_randomFloats);
-}
-
-
 using namespace std;
 template<typename T>
 void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint numTests, uint *algorithmsToTest, uint generateType, char* fileNamecsv) {
@@ -259,8 +197,8 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
 
 
 template<typename T>
-void runTests(uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, 
-              uint startK, uint stopK, uint kJump) {
+void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, 
+               uint kDistribution, uint startK, uint stopK, uint kJump) {
   uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
   uint size;
   uint i;
@@ -280,8 +218,18 @@ void runTests(uint generateType, char* fileName, uint startPower, uint stopPower
     //  arrayOfKs[num-2] = (uint) (.999 * (float) size);
     arrayOfKs[num-1] = (uint) (size - 2); 
     */
+    unsigned long long seed;
+    timeval t1;
+    gettimeofday(&t1, NULL);
+    seed = t1.tv_usec * t1.tv_sec;
+    curandGenerator_t generator;
+    srand(unsigned(time(NULL)));
+    curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
+    curandSetPseudoRandomGeneratorSeed(generator,seed);
 
-    generateRandoms(arrayOfKs, stopK+1, size);
+    arrayOfKDistributionGenerators[kDistribution](arrayOfKs, stopK + 1, size, generator);
+
+    curandDestroyGenerator(generator);
 
     /*
     printf("arrayOfKs = ");
@@ -308,18 +256,20 @@ int main (int argc, char *argv[]) {
   printf("Please enter filename now: ");
   scanf("%s%",fileName);
 
-  uint type,distributionType,startPower,stopPower,startK,stopK,jumpK;
+  uint type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
   
   printf("Please enter the type of value you want to test:\n1-float\n2-double\n3-uint\n");
   scanf("%u", &type);
-  printf("Please enter Distribution type: ");
+  printf("Please enter distribution type: ");
   scanf("%u", &distributionType);
-  printf("Please enter  number of tests to run per K: ");
+  printf("Please enter number of tests to run per K: ");
   scanf("%u", &testCount);
   printf("Please enter Start power: ");
   scanf("%u", &startPower);
   printf("Please enter Stop power: ");
   scanf("%u", &stopPower); 
+  printf("Please enter K distribution type: ");
+  scanf("%u", &kDistribution);
   printf("Please enter Start number of K values: ");
   scanf("%u", &startK);
   printf("Please enter Stop number of K values: ");
@@ -329,13 +279,13 @@ int main (int argc, char *argv[]) {
 
   switch(type){
   case 1:
-    runTests<float>(distributionType,fileName,startPower,stopPower,testCount,startK,stopK,jumpK);
+    runTests<float>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
     break;
   case 2:
-    runTests<double>(distributionType,fileName,startPower,stopPower,testCount,startK,stopK,jumpK);
+    runTests<double>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
     break;
   case 3:
-    runTests<uint>(distributionType,fileName,startPower,stopPower,testCount,startK,stopK,jumpK);
+    runTests<uint>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
     break;
   default:
     printf("You entered and invalid option, now exiting\n");
