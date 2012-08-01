@@ -509,11 +509,11 @@ struct RandomNumberFunctor :
   }
 };
 
-void generateKUniformRandom (uint * arrayOfKs, uint numRandoms, uint vectorSize, curandGenerator_t generator) {
-  float * randomFloats = (float *) malloc (numRandoms * sizeof (float));
+void generateKUniformRandom (uint * kList, uint kListCount, uint vectorSize, curandGenerator_t generator) {
+  float * randomFloats = (float *) malloc (kListCount * sizeof (float));
   float * d_randomFloats;
 
-  cudaMalloc (&d_randomFloats, sizeof (float) * numRandoms);
+  cudaMalloc (&d_randomFloats, sizeof (float) * kListCount);
   
   timeval t1;
   uint seed;
@@ -522,31 +522,31 @@ void generateKUniformRandom (uint * arrayOfKs, uint numRandoms, uint vectorSize,
   seed = t1.tv_usec * t1.tv_sec;
   
   thrust::device_ptr<float> d_ptr(d_randomFloats);
-  thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(numRandoms), d_ptr, RandomNumberFunctor(seed));
+  thrust::transform(thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(kListCount), d_ptr, RandomNumberFunctor(seed));
 
 
-  cudaMemcpy (randomFloats, d_randomFloats, numRandoms * sizeof (float), cudaMemcpyDeviceToHost);
+  cudaMemcpy (randomFloats, d_randomFloats, kListCount * sizeof (float), cudaMemcpyDeviceToHost);
 
-  for (int i = 0; i < numRandoms; i++)
-    arrayOfKs[i] = (uint) (randomFloats[i] * (float) vectorSize);
+  for (int i = 0; i < kListCount; i++)
+    kList[i] = (uint) (randomFloats[i] * (float) vectorSize);
     
   cudaFree (d_randomFloats);
   free (randomFloats);
 }
 
-void generateKUniform (uint * arrayOfKs, uint numRandoms, uint vectorSize, curandGenerator_t generator) {
-  arrayOfKs[0] = 2;
-  for (uint i = 1; i < numRandoms; i++) 
-    arrayOfKs[i] = (uint) ((i / (float) numRandoms) * vectorSize);
+void generateKUniform (uint * kList, uint kListCount, uint vectorSize, curandGenerator_t generator) {
+  kList[0] = 2;
+  for (uint i = 1; i < kListCount; i++) 
+    kList[i] = (uint) ((i / (float) kListCount) * vectorSize);
 }
 
-void generateKNormal (uint * arrayOfKs, uint numRandoms, uint vectorSize, curandGenerator_t generator) {
+void generateKNormal (uint * kList, uint kListCount, uint vectorSize, curandGenerator_t generator) {
 
 
 }
 
 
-void generateKCluster (uint * arrayOfKs, uint numRandoms, uint vectorSize, curandGenerator_t generator) {
+void generateKCluster (uint * kList, uint kListCount, uint vectorSize, curandGenerator_t generator) {
 
 
 
