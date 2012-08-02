@@ -214,6 +214,33 @@ results_t<T>* timeRandomizedBucketSelect(T* hostVec, uint size, uint k){
 
 }
 
+//FUNCTION TO TIME NO EXTREMA RANDOMIZED BUCKET SELECT
+template<typename T>
+results_t<T>* timeNoExtremaRandomizedBucketSelect(T* hostVec, uint size, uint k){
+  cudaEvent_t start, stop;
+  float time;
+  results_t<T> *result;
+  T retFromSelect;
+  T* deviceVec;
+  cudaDeviceProp dp;
+  cudaGetDeviceProperties(&dp,0);
+
+
+  setupForTiming(start,stop, &deviceVec, hostVec, size, &result);
+
+  cudaEventRecord(start, 0);
+
+  retFromSelect = RandomizedBucketSelect::randomizedBucketSelectWrapper(deviceVec, size, k, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+ 
+  cudaEventRecord(stop, 0);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&time,start,stop);
+
+  wrapupForTiming(start,stop, deviceVec, result, time, retFromSelect);
+  return result;
+
+}
+
 
 //FUNCTION TO TIME LANL SELECT
 template<typename T>
