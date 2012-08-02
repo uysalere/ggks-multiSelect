@@ -364,9 +364,7 @@ namespace RandomizedBucketSelect{
     setToAllZero(d_bucketCount, numBuckets);
 
     //Distribute elements into their respective buckets
-    timing(0, 5);
     assignBucket<<<numBlocks, threadsPerBlock, numBuckets*sizeof(uint)>>>(d_vector, length, numBuckets, slope, minimum, elementToBucket, d_bucketCount, offset);
-    timing(1, 5);
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
  
@@ -789,12 +787,10 @@ namespace RandomizedBucketSelect{
     setToAllZero(d_bucketCount, numBuckets);
 
     //Distribute elements into their respective buckets
-    timing(0, 3);  
     assignSmartBucket<<<numBlocks, threadsPerBlock, numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, &kthBucketScanner);
     // kthBucket = FindSmartKBucket(d_bucketCount, h_bucketCount, numBuckets, K, length, &kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
-    timing(1, 3);
 
     printf("randomselect kbucket_count = %d\n", kthBucketCount);
 

@@ -41,12 +41,13 @@
 #include "merrillSelect.cu"
 #include "bucketSelect.cu"
 #include "randomizedSelect.cu"
+#include "randomizedBlockedBucketSelect.cu"
 #include "randomizedBucketSelect.cu"
 
 #include "generateProblems.cu"
 #include "timingFunctions.cu"
-#define NUMBEROFALGORITHMS 6
-char* namesOfTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and choose", "Radix select","Bucket Select", "Rand Bucket Select", "Plane Cutting","Randomized Select"}; 
+#define NUMBEROFALGORITHMS 7
+char* namesOfTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and choose", "Radix select","Bucket Select", "Rand Bucket Select", "Rand Blocked Select", "Plane Cutting","Randomized Select"}; 
  
 using namespace std;
 template<typename T>
@@ -72,6 +73,7 @@ void compareAlgorithms(uint size, uint k, uint numTests,uint *algorithmsToTest, 
                                                                     &timeRadixSelect<T>,
                                                                     &timeBucketSelect<T>,
                                                                     &timeRandomizedBucketSelect<T>,
+                                                                    &timeRandomizedBlockedBucketSelect<T>,
                                                                     // &timeCuttingPlane<T>,
                                                                     &timeRandomizedSelect<T>};
   
@@ -211,23 +213,25 @@ void compareAlgorithms(uint size, uint k, uint numTests,uint *algorithmsToTest, 
 
 template<typename T>
 void runTests(uint generateType, char* fileName,uint startPower, uint stopPower, uint timesToTestEachK = 100){
-  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1,1,1,1,0,0};
+  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1,1,1,1,1,0,0};
   uint size;
   uint i;
-  uint arrayOfKs[25];
+  uint arrayOfKs[27];
   for(size = (1 << startPower); size <= (1 <<stopPower); size *= 2){
     //calculate k values
     arrayOfKs[0]= 2;
-    arrayOfKs[1] = .01 * size;
-    arrayOfKs[2] = .025 * size;
+    arrayOfKs[1]= 5;
+    arrayOfKs[2] = .01 * size;
+    arrayOfKs[3] = .025 * size;
     for(i = 1; i <= 19; i++){
-      arrayOfKs[i +2] = (.05 * i) * size;
+      arrayOfKs[i +3] = (.05 * i) * size;
     }
-    arrayOfKs[22] = .975 * size;
-    arrayOfKs[23] = .99 * size;
-    arrayOfKs[24] = size-1;
+    arrayOfKs[23] = .975 * size;
+    arrayOfKs[24] = .99 * size;
+    arrayOfKs[25] = size-4;
+    arrayOfKs[26] = size-1;
 
-    for(i = 0; i < 25; i++){
+    for(i = 0; i < 27; i++){
       //  cudaDeviceReset();
       cudaThreadExit();
       printf("NOW STARTING A NEW K\n\n"); 
