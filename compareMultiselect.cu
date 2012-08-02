@@ -227,7 +227,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
 
-    arrayOfKDistributionGenerators[kDistribution](arrayOfKs, stopK + 1, size, generator);
+    arrayOfKDistributionGenerators[kDistribution](arrayOfKs, stopK, size, generator);
 
     curandDestroyGenerator(generator);
 

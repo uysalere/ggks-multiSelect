@@ -439,7 +439,7 @@ namespace BucketMultiselect{
       for (register int i = 0; i < kListCount; i++) 
         output[i] = minimum;
       
-      return 0;
+      return 1;
     }
 
     // timing(1, 1);
@@ -482,7 +482,7 @@ namespace BucketMultiselect{
     uint * d_kList; 
     uint kthBuckets[kListCount]; 
     uint kthBucketScanner[kListCount]; 
-    uint kIndices[kListCount];
+    uint * kIndices = (uint *) malloc (kListCount * sizeof (uint));
     uint * d_kIndices;
     uint uniqueBuckets[kListCount];
     uint * d_uniqueBuckets; 
@@ -521,6 +521,24 @@ namespace BucketMultiselect{
 
     cudaFree(d_kIndices); 
     cudaFree(d_kList); 
+
+    int kOffset = kListCount - 1;
+    while (kList[kOffset] == length) {
+      output[kIndices[kListCount-1]] = maximum;
+      kListCount--;
+      kOffset--;
+    }
+
+    kOffset = 0;
+    while (kList[0] == 1) {
+      output[kIndices[0]] = minimum;
+      kIndices++;
+      kList++;
+      kListCount--;
+      kOffset++;
+    }
+    
+
 
     // timing(1, 3);
     /// ***********************************************************
@@ -648,6 +666,7 @@ namespace BucketMultiselect{
     // timing(1, 10);
 
     cudaFree(newInput); 
+    free (kIndices - kOffset);
 
     return 1;
   }
@@ -657,6 +676,8 @@ namespace BucketMultiselect{
 
     int numBuckets = 8192;
     uint kList[kListCount];
+
+    // turn it into kth smallest
     for (register int i = 0; i < kListCount; i++) 
       kList[i] = length - kList_ori[i] + 1;
    
