@@ -39,7 +39,7 @@ char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose 
 
 using namespace std;
 template<typename T>
-void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv) {
+int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv) {
   T *h_vec, *h_vec_copy;
   float timeArray[NUMBEROFALGORITHMS][numTests];
   T * resultsArray[NUMBEROFALGORITHMS][numTests];
@@ -94,7 +94,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
       runOrder[m] = m;
     
     std::random_shuffle(runOrder, runOrder + NUMBEROFALGORITHMS);
-    fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
+    //fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
     printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests,size,kListCount);
@@ -132,10 +132,11 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     }
 
     curandDestroyGenerator(generator);
+    /*
     for(x = 0; x < NUMBEROFALGORITHMS; x++)
       if(algorithmsToTest[x])
         fileCsv << namesOfMultiselectTimingFunctions[x] << "," << timeArray[x][i] << ",";
-
+    */
     uint flag = 0;
     for(m = 1; m < NUMBEROFALGORITHMS;m++)
       if(algorithmsToTest[m])
@@ -145,7 +146,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
             flag++;
         }
 
-    fileCsv << flag << "\n";
+    fileCsv << flag << ",";
   }
   
   //calculate the total time each algorithm took
@@ -169,7 +170,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
   for(i = 0; i < NUMBEROFALGORITHMS; i++)
     if(algorithmsToTest[i])
       printf("%s won %u times\n", namesOfMultiselectTimingFunctions[i], timesWon[i]);
-
+  /*
   for(i = 0; i < numTests; i++)
     for(j = 1; j < NUMBEROFALGORITHMS; j++)
       for (m = 0; m < kListCount; m++)
@@ -182,6 +183,17 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
             std::cout << "Right:\t";
             PrintFunctions::printBinary(resultsArray[0][i][m]);
           }
+  */
+
+  
+  if(timesWon[1] < timesWon[0]) {
+    fileCsv << "\n\n\n" << kListCount << "," << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", ratio:" << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
+
+    for(x = 0; x < NUMBEROFALGORITHMS; x++)
+      if(algorithmsToTest[x])
+        fileCsv << namesOfMultiselectTimingFunctions[x] << "," << timeArray[x][i];
+
+  }
 
   for(i = 0; i < numTests; i++) 
     for(m = 0; m < NUMBEROFALGORITHMS; m++) 
@@ -194,17 +206,18 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
   free(h_vec_copy);
   //close the file
   fileCsv.close();
+  return (timesWon[0] < timesWon[1]);
 }
 
 
 template<typename T>
 void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, 
-               uint kDistribution, uint startK, uint stopK, uint kJump) {
+               uint kDistribution) {
   uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
   uint size;
-  uint i;
+  uint i = 1;
+  uint stopK = (1 << 27) * .01;
   uint arrayOfKs[stopK+1];
-  
   
   for(size = (1 << startPower); size <= (1 << stopPower); size *= 2) {
     /*
@@ -239,12 +252,13 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     printf("\n\n");
     */
 
-    for(i = startK; i <= stopK; i+=kJump) {
-      cudaDeviceReset();
-      cudaThreadExit();
-      printf("NOW ADDING ANOTHER K\n\n");
-      compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName);
-    }
+    // for(i = 1; i <= stopK; i+=kJump) {
+    //  cudaDeviceReset();
+    //  cudaThreadExit();
+    //  printf("NOW ADDING ANOTHER K\n\n");
+
+    while (compareMultiselectAlgorithms<T>(size, arrayOfKs, i++, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName));
+      // }
   }
 }
 
@@ -257,7 +271,7 @@ int main (int argc, char *argv[]) {
   printf("Please enter filename now: ");
   scanf("%s%",fileName);
 
-  uint type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
+  uint type,distributionType,startPower,stopPower,kDistribution;
   
   printf("Please enter the type of value you want to test:\n1-float\n2-double\n3-uint\n");
   scanf("%u", &type);
@@ -271,22 +285,16 @@ int main (int argc, char *argv[]) {
   scanf("%u", &stopPower); 
   printf("Please enter K distribution type: ");
   scanf("%u", &kDistribution);
-  printf("Please enter Start number of K values: ");
-  scanf("%u", &startK);
-  printf("Please enter Stop number of K values: ");
-  scanf("%u", &stopK);
-  printf("Please enter number of K values to jump by: ");
-  scanf("%u", &jumpK);
 
   switch(type){
   case 1:
-    runTests<float>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
+    runTests<float>(distributionType,fileName,startPower,stopPower,testCount,kDistribution);
     break;
   case 2:
-    runTests<double>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
+    runTests<double>(distributionType,fileName,startPower,stopPower,testCount,kDistribution);
     break;
   case 3:
-    runTests<uint>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
+    runTests<uint>(distributionType,fileName,startPower,stopPower,testCount,kDistribution);
     break;
   default:
     printf("You entered and invalid option, now exiting\n");

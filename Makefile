@@ -34,5 +34,8 @@ compareAlgorithms: compareAlgorithms.cu bucketSelect.cu randomizedBucketSelect.c
 compareMultiselect: compareMultiselect.cu bucketMultiselect.cu naiveBucketMultiselect.cu generateProblems.cu noExtremaRandomizedBucketSelect.cu
 	$(NVCC) -o compareMultiselect compareMultiselect.cu $(NVCCFLAGS)
 
+analyzeMultiselect: analyzeMultiselect.cu bucketMultiselect.cu
+	$(NVCC) -o analyzeMultiselect analyzeMultiselect.cu $(NVCCFLAGS)
+
 clean:
-	rm -f compareAlgorithms compareMultiselect *~ x
+	rm -f compareAlgorithms compareMultiselect analyzeMultiselect *~ x
