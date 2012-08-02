@@ -392,7 +392,7 @@ namespace BucketSelect{
     kthBucket = FindKBucket(d_bucketCount, h_bucketCount, numBuckets, K, & kthBucketScanner);
     kthBucketCount = h_bucketCount[kthBucket];
  
-    printf("original kthBucketCount = %d\n", kthBucketCount);
+    printf("naive kthBucketCount = %d\n", kthBucketCount);
 
     //we must update K since we have reduced the problem size to elements in the kth bucket
     if(kthBucket != 0){

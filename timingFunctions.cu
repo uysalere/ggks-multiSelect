@@ -230,7 +230,7 @@ results_t<T>* timeNoExtremaRandomizedBucketSelect(T* hostVec, uint size, uint k)
 
   cudaEventRecord(start, 0);
 
-  retFromSelect = RandomizedBucketSelect::randomizedBucketSelectWrapper(deviceVec, size, k, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+  retFromSelect = NoExtremaRandomizedBucketSelect::noExtremaRandomizedBucketSelectWrapper(deviceVec, size, k, dp.multiProcessorCount, dp.maxThreadsPerBlock);
  
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);

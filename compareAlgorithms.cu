@@ -42,6 +42,7 @@
 #include "bucketSelect.cu"
 #include "randomizedSelect.cu"
 #include "randomizedBucketSelect.cu"
+#include "noExtremaRandomizedBucketSelect.cu"
 
 #include "generateProblems.cu"
 #include "timingFunctions.cu"
