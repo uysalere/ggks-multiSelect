@@ -39,7 +39,7 @@ char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose 
 
 using namespace std;
 template<typename T>
-void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint numTests, uint *algorithmsToTest, uint generateType, char* fileNamecsv) {
+void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv) {
   T *h_vec, *h_vec_copy;
   float timeArray[NUMBEROFALGORITHMS][numTests];
   T * resultsArray[NUMBEROFALGORITHMS][numTests];
@@ -84,6 +84,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kCount, uint num
   srand(unsigned(time(NULL)));
 
   printf("The distribution is: %s\n", namesOfGeneratingFunctions[generateType]);
+  printf("The k distribution is: %s\n", namesOfKGenerators[kGenerateType]);
   for(i = 0; i < numTests; i++) {
     // cudaDeviceReset();
     gettimeofday(&t1, NULL);
@@ -242,7 +243,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
       cudaDeviceReset();
       cudaThreadExit();
       printf("NOW ADDING ANOTHER K\n\n");
-      compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, fileName);
+      compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName);
     }
   }
 }
