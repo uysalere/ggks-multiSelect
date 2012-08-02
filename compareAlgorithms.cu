@@ -45,8 +45,8 @@
 
 #include "generateProblems.cu"
 #include "timingFunctions.cu"
-#define NUMBEROFALGORITHMS 6
-char* namesOfTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and choose", "Radix select","Bucket Select", "Rand Bucket Select", "Plane Cutting","Randomized Select"}; 
+#define NUMBEROFALGORITHMS 7
+char* namesOfTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and choose", "Radix select","Naive Bucket Select", "Rand Bucket Select", "No Ext Rand Bucket Select", "Plane Cutting","Randomized Select"}; 
  
 using namespace std;
 template<typename T>
@@ -72,6 +72,7 @@ void compareAlgorithms(uint size, uint k, uint numTests,uint *algorithmsToTest, 
                                                                     &timeRadixSelect<T>,
                                                                     &timeBucketSelect<T>,
                                                                     &timeRandomizedBucketSelect<T>,
+                                                                    &timeNoExtremaRandomizedBucketSelect<T>,
                                                                     // &timeCuttingPlane<T>,
                                                                     &timeRandomizedSelect<T>};
   
@@ -178,7 +179,7 @@ void compareAlgorithms(uint size, uint k, uint numTests,uint *algorithmsToTest, 
   //print out the average times
   for(i = 0; i < NUMBEROFALGORITHMS; i++){
     if(algorithmsToTest[i]){
-      printf("%-20s averaged: %f ms\n", namesOfTimingFunctions[i], totalTimesPerAlgorithm[i] / numTests);
+      printf("%-30s averaged: %f ms\n", namesOfTimingFunctions[i], totalTimesPerAlgorithm[i] / numTests);
     }
   }
   for(i = 0; i < NUMBEROFALGORITHMS; i++){
@@ -211,7 +212,7 @@ void compareAlgorithms(uint size, uint k, uint numTests,uint *algorithmsToTest, 
 
 template<typename T>
 void runTests(uint generateType, char* fileName,uint startPower, uint stopPower, uint timesToTestEachK = 100){
-  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1,1,1,1,0,0};
+  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1,1,1,1,1,0,0};
   uint size;
   uint i;
   uint arrayOfKs[25];
