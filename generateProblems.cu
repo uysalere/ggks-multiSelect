@@ -485,10 +485,8 @@ void generateKUniformRandom (uint * kList, uint kListCount, uint vectorSize, cur
 
   cudaMemcpy (randomFloats, d_randomFloats, kListCount * sizeof (float), cudaMemcpyDeviceToHost);
 
-  for (int i = 0; i < kListCount; i++) {
+  for (int i = 0; i < kListCount; i++)
     kList[i] = (uint) (randomFloats[i] * (float) vectorSize);
-    printf("%u\n", kList[i]);
-  }
     
   cudaFree (d_randomFloats);
   free (randomFloats);
@@ -496,13 +494,15 @@ void generateKUniformRandom (uint * kList, uint kListCount, uint vectorSize, cur
 
 void generateKUniform (uint * kList, uint kListCount, uint vectorSize, curandGenerator_t generator) {
   kList[0] = 1;
+
   for (uint i = 1; i < kListCount; i++)
     kList[i] = (uint) ((i / (float) kListCount) * vectorSize);
-  kList[kList - 1] = vectorSize;
+
+  kList[kListCount - 1] = vectorSize;
 }
 
 void generateKNormal (uint * kList, uint kListCount, uint vectorSize, curandGenerator_t generator) {
-  float * randomFloats = (float *) malloc (kListCount * sizeof (float));
+  float * randomFloats = (float *) malloc (sizeof (float) * kListCount);
   float * d_randomFloats;
 
   cudaMalloc (&d_randomFloats, sizeof (float) * kListCount);
@@ -511,10 +511,8 @@ void generateKNormal (uint * kList, uint kListCount, uint vectorSize, curandGene
 
   cudaMemcpy (randomFloats, d_randomFloats, kListCount * sizeof (float), cudaMemcpyDeviceToHost);
 
-  for (int i = 0; i < kListCount; i++) {
-    kList[i] = (uint) (abs (randomFloats[i]) * (vectorSize / 10));
-    printf("%f, %u\n", randomFloats[i], kList[i]);
-  }
+  for (int i = 0; i < kListCount; i++) 
+    kList[i] = (uint) ((abs (randomFloats[i]) + 7) * (vectorSize / 14.0));
 
   cudaFree (d_randomFloats);
   free (randomFloats);
@@ -522,12 +520,52 @@ void generateKNormal (uint * kList, uint kListCount, uint vectorSize, curandGene
 
 
 void generateKCluster (uint * kList, uint kListCount, uint vectorSize, curandGenerator_t generator) {
+  float * randomFloats = (float *) malloc (sizeof (float) * kListCount / 9);
+  float * d_randomFloats;
 
+  cudaMalloc (&d_randomFloats, sizeof (float) * kListCount / 9);
+  
+  curandGenerateUniform (generator, d_randomFloats, kListCount / 9);
 
+  cudaMemcpy (randomFloats, d_randomFloats, kListCount * sizeof (float) / 9, cudaMemcpyDeviceToHost);
 
+  int floatIndex = 0;
+  for (int i = 4; i < kListCount; i+=9) {
+   
+    kList[i] = (uint) (randomFloats[floatIndex++] * (vectorSize - 10) + 5);
+
+    for (uint j = 1; j < 5; j++) {
+      kList[i - j] = kList[i] - j;
+      if ((i + j) < kListCount)
+        kList[i + j] = kList[i] + j;
+    }
+  }
+
+  cudaFree (d_randomFloats);
+  free (randomFloats);
 }
 
-#define NUMBEROFKDISTRIBUTIONS 4
+void generateKSectioned (uint * kList, uint kListCount, uint vectorSize, curandGenerator_t generator) {
+  float * randomFloat = (float *) malloc (sizeof (float));
+  float * d_randomFloat;
+
+  cudaMalloc (&d_randomFloat, sizeof (float));
+  
+  curandGenerateUniform (generator, d_randomFloat, 1);
+ 
+  cudaMemcpy (randomFloat, d_randomFloat, sizeof (float), cudaMemcpyDeviceToHost);
+
+  kList[0] = (uint) (*randomFloat * (vectorSize - kListCount));
+
+  for (int i = 1; i < kListCount; i++)
+    kList[i] = kList[i-1] + 1;
+
+  cudaFree (d_randomFloat);
+  free (randomFloat);
+}
+
+
+#define NUMBEROFKDISTRIBUTIONS 5
 typedef void (*ptrToKDistributionGenerator)(uint *, uint, uint, curandGenerator_t);
-ptrToKDistributionGenerator arrayOfKDistributionGenerators[NUMBEROFKDISTRIBUTIONS] = {&generateKUniformRandom, &generateKUniform, &generateKNormal, &generateKCluster};
-char* namesOfKGenerators[NUMBEROFKDISTRIBUTIONS] = {"Generate Uniform Random Ks", "Generate Uniform Ks", "Generate Normal Random Ks", "Generate Cluster Ks"};
+ptrToKDistributionGenerator arrayOfKDistributionGenerators[NUMBEROFKDISTRIBUTIONS] = {&generateKUniformRandom, &generateKUniform, &generateKNormal, &generateKCluster, &generateKSectioned};
+char* namesOfKGenerators[NUMBEROFKDISTRIBUTIONS] = {"Uniform Random Ks", "Uniform Ks", "Normal Random Ks", "Cluster Ks", "Sectioned Ks"};
