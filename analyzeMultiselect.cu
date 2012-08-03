@@ -189,9 +189,10 @@ int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint 
   if(timesWon[1] < timesWon[0]) {
     fileCsv << "\n\n\n" << kListCount << "," << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", ratio:" << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
 
+
     for(x = 0; x < NUMBEROFALGORITHMS; x++)
       if(algorithmsToTest[x])
-        fileCsv << namesOfMultiselectTimingFunctions[x] << "," << timeArray[x][i];
+        fileCsv << namesOfMultiselectTimingFunctions[x] << "," << totalTimesPerAlgorithm[x] / numTests << ",";
 
   }
 
@@ -258,6 +259,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     //  printf("NOW ADDING ANOTHER K\n\n");
 
     while (compareMultiselectAlgorithms<T>(size, arrayOfKs, i++, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName));
+    i *= .9;
       // }
   }
 }
