@@ -187,14 +187,18 @@ int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint 
 
   
   if(timesWon[1] < timesWon[0]) {
-    fileCsv << "\n\n\n" << kListCount << "," << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", ratio:" << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
+    fileCsv << "\n\n\nk value count: " << kListCount << ", " << "2^" << (int) log2((float) size) << ", ratio:" << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
 
 
     for(x = 0; x < NUMBEROFALGORITHMS; x++)
       if(algorithmsToTest[x])
         fileCsv << namesOfMultiselectTimingFunctions[x] << "," << totalTimesPerAlgorithm[x] / numTests << ",";
 
+    fileCsv << "\n\n\n";
+
   }
+
+
 
   for(i = 0; i < numTests; i++) 
     for(m = 0; m < NUMBEROFALGORITHMS; m++) 
@@ -217,10 +221,12 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
   uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
   uint size;
   uint i = 1;
-  uint stopK = (1 << 27) * .01;
-  uint arrayOfKs[stopK+1];
+
   
   for(size = (1 << startPower); size <= (1 << stopPower); size *= 2) {
+    uint stopK = size * .01;
+    uint arrayOfKs[stopK];
+
     /*
     //calculate k values
     arrayOfKs[0] = 2;
@@ -247,10 +253,10 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     curandDestroyGenerator(generator);
 
     /*
-    printf("arrayOfKs = ");
-    for(uint j = 0; j < stopK+1; j++)
+      printf("arrayOfKs = ");
+      for(uint j = 0; j < stopK+1; j++)
       printf("%u; ", arrayOfKs[j]);
-    printf("\n\n");
+      printf("\n\n");
     */
 
     // for(i = 1; i <= stopK; i+=kJump) {
@@ -259,8 +265,10 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     //  printf("NOW ADDING ANOTHER K\n\n");
 
     while (compareMultiselectAlgorithms<T>(size, arrayOfKs, i++, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName));
+    printf ("\n\n\n\n **************** NUM K VALUES FOR SIZE = 2^%d is kListCount = %u ********************\n\n\n\n", (int) log2((float)size), i);
     i *= .9;
-      // }
+    
+    // }
   }
 }
 
