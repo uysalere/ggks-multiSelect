@@ -251,32 +251,53 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 int main (int argc, char *argv[]) {
   char *fileName;
+  char *typeString;
 
   uint testCount;
-  fileName = (char*) malloc(60 * sizeof(char));
-  printf("Please enter filename now: ");
-  scanf("%s%",fileName);
+  fileName = (char*) malloc(128 * sizeof(char));
+  typeString = (char*) malloc(10 * sizeof(char));
 
   uint type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
   
   printf("Please enter the type of value you want to test:\n1-float\n2-double\n3-uint\n");
   scanf("%u", &type);
   printf("Please enter distribution type: ");
+  printDistributionOptions(type);
   scanf("%u", &distributionType);
-  printf("Please enter number of tests to run per K: ");
-  scanf("%u", &testCount);
+  printf("Please enter K distribution type: ");
+  printKDistributionOptions();
+  scanf("%u", &kDistribution);
   printf("Please enter Start power: ");
   scanf("%u", &startPower);
   printf("Please enter Stop power: ");
   scanf("%u", &stopPower); 
-  printf("Please enter K distribution type: ");
-  scanf("%u", &kDistribution);
   printf("Please enter Start number of K values: ");
   scanf("%u", &startK);
-  printf("Please enter Stop number of K values: ");
-  scanf("%u", &stopK);
   printf("Please enter number of K values to jump by: ");
   scanf("%u", &jumpK);
+  printf("Please enter Stop number of K values: ");
+  scanf("%u", &stopK);
+  printf("Please enter number of tests to run per K: ");
+  scanf("%u", &testCount);
+
+  switch(type){
+  case 1:
+    typeString = "float";
+    break;
+  case 2:
+    typeString = "double";
+    break;
+  case 3:
+    typeString = "uint";
+    break;
+  default:
+    break;
+  }
+
+
+  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d (%d:%d:%d) %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, startK, jumpK, stopK, testCount);
+  printf("File Name: %s \n", fileName);
+  //printf("Please enter filename now: ");
 
   switch(type){
   case 1:

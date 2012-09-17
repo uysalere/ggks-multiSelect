@@ -472,6 +472,17 @@ void printDistributionOptions(uint type){
   }
 }
 
+char * getDistributionOptions(uint type, uint number){
+  switch(type){
+  case 1:
+    return namesOfFloatGeneratingFunctions[number];
+  case 2:
+    return namesOfDoubleGeneratingFunctions[number];
+  case 3:
+    return namesOfUintGeneratingFunctions[number];
+  }
+    return NULL;
+}
 
 
 /********** K DISTRIBUTION GENERATOR FUNCTIONS ************/
@@ -565,7 +576,19 @@ void generateKSectioned (uint * kList, uint kListCount, uint vectorSize, curandG
 }
 
 
+
+
 #define NUMBEROFKDISTRIBUTIONS 5
 typedef void (*ptrToKDistributionGenerator)(uint *, uint, uint, curandGenerator_t);
 ptrToKDistributionGenerator arrayOfKDistributionGenerators[NUMBEROFKDISTRIBUTIONS] = {&generateKUniformRandom, &generateKUniform, &generateKNormal, &generateKCluster, &generateKSectioned};
 char* namesOfKGenerators[NUMBEROFKDISTRIBUTIONS] = {"Uniform Random Ks", "Uniform Ks", "Normal Random Ks", "Cluster Ks", "Sectioned Ks"};
+
+void printKDistributionOptions(){
+  printf("\n");
+  for(int i=0; i< NUMBEROFKDISTRIBUTIONS; i++) 
+    printf("%d- %s\n", i+1, namesOfKGenerators[i]);
+}
+
+char * getKDistributionOptions(uint number) {
+    return namesOfKGenerators[number];
+}
