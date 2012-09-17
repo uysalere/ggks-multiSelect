@@ -39,7 +39,7 @@ char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose 
 
 using namespace std;
 template<typename T>
-int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv) {
+int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv) {
   T *h_vec, *h_vec_copy;
   float timeArray[NUMBEROFALGORITHMS][numTests];
   T * resultsArray[NUMBEROFALGORITHMS][numTests];
@@ -94,7 +94,7 @@ int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint 
       runOrder[m] = m;
     
     std::random_shuffle(runOrder, runOrder + NUMBEROFALGORITHMS);
-    //fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
+    //fileCsv << size << "," << kList[0] << "," << kList[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
     printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests,size,kListCount);
@@ -112,8 +112,8 @@ int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint 
       if(algorithmsToTest[j]){
 
         //run timing function j
-        printf("TESTING: %u\n", j);
-        temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kListCount);
+        // printf("TESTING: %u\n", j);
+        temp = arrayOfTimingFunctions[j](h_vec_copy, size, kList, kListCount);
 
         //record the time result
         timeArray[j][i] = temp->time;
@@ -142,11 +142,25 @@ int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint 
       if(algorithmsToTest[m])
         for (j = 0; j < kListCount; j++) {
           T tempResult = resultsArray[0][i][j];
-          if(resultsArray[m][i][j] != tempResult)
+          if(resultsArray[m][i][j] != tempResult) {
             flag++;
-        }
+            fileCsv << "\nERROR ON TEST " << i << " of " << numTests << " tests!!!!!\n";
+            fileCsv << "vector size = " << size << "\nvector seed = " << seed << "\n";
+            fileCsv << "kListCount = " << kListCount << "\n";
+            // fileCsv << "wrong k = " << kList[j] << "kIndex = " << j << "wrong result = " << resultsArray[m][i][j] << "correct result = " << tempResult  << "\n";
+            std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test " << i + 1 << " at k[" << m << "].  It got "<< resultsArray[j][i][m];
+            std::cout << " instead of " << resultsArray[0][i][m] << ".\n" ;
+            std::cout << "RESULT:\t";
+            PrintFunctions::printBinary(resultsArray[j][i][m]);
+            std::cout << "Right:\t";
+            PrintFunctions::printBinary(resultsArray[0][i][m]);
 
-    fileCsv << flag << ",";
+
+            fileCsv << "\nkList = ";
+            for (int z = 0; z < kListCount; z++)
+              fileCsv << kList[z] << ", ";
+          }
+        }
   }
   
   //calculate the total time each algorithm took
@@ -170,6 +184,7 @@ int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint 
   for(i = 0; i < NUMBEROFALGORITHMS; i++)
     if(algorithmsToTest[i])
       printf("%s won %u times\n", namesOfMultiselectTimingFunctions[i], timesWon[i]);
+
   /*
   for(i = 0; i < numTests; i++)
     for(j = 1; j < NUMBEROFALGORITHMS; j++)
@@ -186,7 +201,7 @@ int compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint 
   */
 
   
-  if(timesWon[1] < timesWon[0]) {
+  if(timesWon[1] <= timesWon[0]) {
     fileCsv << "\n\n\nk value count: " << kListCount << ", " << "2^" << (int) log2((float) size) << ", ratio:" << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
 
 
