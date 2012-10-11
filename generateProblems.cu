@@ -457,13 +457,13 @@ template<typename T> char** returnNamesOfGenerators(){
 
 void printDistributionOptions(uint type){
   switch(type){
-  case 1:
+  case 0:
     PrintFunctions::printArray(returnNamesOfGenerators<float>(), NUMBEROFFLOATDISTRIBUTIONS);
     break;
-  case 2:
+  case 1:
     PrintFunctions::printArray(returnNamesOfGenerators<double>(), NUMBEROFDOUBLEDISTRIBUTIONS);
     break;
-  case 3:
+  case 2:
     PrintFunctions::printArray(returnNamesOfGenerators<uint>(), NUMBEROFUINTDISTRIBUTIONS);
     break;
   default:
@@ -474,11 +474,11 @@ void printDistributionOptions(uint type){
 
 char * getDistributionOptions(uint type, uint number){
   switch(type){
-  case 1:
+  case 0:
     return namesOfFloatGeneratingFunctions[number];
-  case 2:
+  case 1:
     return namesOfDoubleGeneratingFunctions[number];
-  case 3:
+  case 2:
     return namesOfUintGeneratingFunctions[number];
   }
     return NULL;
@@ -584,9 +584,11 @@ ptrToKDistributionGenerator arrayOfKDistributionGenerators[NUMBEROFKDISTRIBUTION
 char* namesOfKGenerators[NUMBEROFKDISTRIBUTIONS] = {"Uniform Random Ks", "Uniform Ks", "Normal Random Ks", "Cluster Ks", "Sectioned Ks"};
 
 void printKDistributionOptions(){
-  printf("\n");
+  PrintFunctions::printArray(namesOfKGenerators, NUMBEROFKDISTRIBUTIONS);
+  /*
   for(int i=0; i< NUMBEROFKDISTRIBUTIONS; i++) 
     printf("%d- %s\n", i+1, namesOfKGenerators[i]);
+  */
 }
 
 char * getKDistributionOptions(uint number) {

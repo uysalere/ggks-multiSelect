@@ -417,7 +417,7 @@ namespace BucketMultiselect{
   __global__ void copyValuesInChunk (T * outputVector, T * inputVector, uint * kList, uint * kIndices, int kListCount) {
    
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx <= kListCount)
+    if (idx < kListCount)
       *(outputVector + *(kIndices + idx)) = *(inputVector + *(kList + idx) - 1);
 
     /*
@@ -679,14 +679,15 @@ namespace BucketMultiselect{
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
 
 
-    // printf("newInputLength = %d\n", newInputLength);
-    // for (register int i = 0; i < kListCount; i++) 
-    //  CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
-
+    printf("copiedVectorLength = %d\n", newInputLength);
+    /*
+    for (register int i = 0; i < kListCount; i++) 
+     CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+    */
     /* new strategy for copying k values back in a chunk */
     
   
-
+    
     T * d_output;
     CUDA_CALL(cudaMalloc (&d_output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T)));
     CUDA_CALL(cudaMemcpy (d_output, output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T), cudaMemcpyHostToDevice));
@@ -708,7 +709,6 @@ namespace BucketMultiselect{
     cudaFree(d_kIndices); 
     cudaFree(d_kList); 
     
-
     /* done new strategy for copying k values back in a chunk */
 
     // timing(1, 10);

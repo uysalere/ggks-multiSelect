@@ -1,6 +1,8 @@
 /* Based on timingFunctions.cu */
 #include <stdlib.h>
 
+#define MAX_THREADS_PER_BLOCK 1024
+
 template <typename T>
  struct results_t {
   float time;
@@ -30,6 +32,16 @@ void wrapupForTiming(cudaEvent_t &start, cudaEvent_t &stop, float time, results_
 /////////////////////////////////////////////////////////////////
 //          THE SORT AND CHOOSE TIMING FUNCTION
 /////////////////////////////////////////////////////////////////
+
+
+  template <typename T>
+  __global__ void copyInChunk (T * outputVector, T * inputVector, uint * kList, int kListCount) {
+   
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < kListCount)
+      *(outputVector + idx) = *(inputVector + kListCount - *(kList + idx));
+  }
+
 template<typename T>
 results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kVals, uint kCount) {
   T * d_vec;
@@ -47,12 +59,31 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
   for (int i = 0; i < kCount; i++)
     cudaMemcpy(result->vals + i, d_vec + (numElements - kVals[i]), sizeof (T), cudaMemcpyDeviceToHost);
 
+  /*
+  T * d_output;
+  T * d_kList;
+  CUDA_CALL(cudaMalloc (&d_output, kCount * sizeof (T)));
+  CUDA_CALL(cudaMalloc(&d_kList, kCount * sizeof(uint)));
+  CUDA_CALL(cudaMemcpy (d_kList, kVals, kCount * sizeof (uint), cudaMemcpyHostToDevice));
+
+  threads = MAX_THREADS_PER_BLOCK;
+  if (kCount < threads)
+    threads = kCount;
+  blocks = (int) ceil (kCount / (float) threads);
+
+  copyInChunk<<<blocks, threads>>>(d_output, dev_ptr, d_kList, kCount);
+  cudaMemcpy (result->vals, d_output, kCount * sizeof (T), cudaMemcpyDeviceToHost);
+
+  cudaFree(d_output);
+  cudaFree(d_kList); 
+  */
+  cudaFree(d_vec);
+
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&time, start, stop);
 
   wrapupForTiming(start, stop, time, result);
-  cudaFree(d_vec);
   return result;
 }
 

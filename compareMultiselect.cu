@@ -259,7 +259,7 @@ int main (int argc, char *argv[]) {
 
   uint type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
   
-  printf("Please enter the type of value you want to test:\n1-float\n2-double\n3-uint\n");
+  printf("Please enter the type of value you want to test:\n0-float\n1-double\n2-uint\n");
   scanf("%u", &type);
   printf("Please enter distribution type: ");
   printDistributionOptions(type);
@@ -281,13 +281,13 @@ int main (int argc, char *argv[]) {
   scanf("%u", &testCount);
 
   switch(type){
-  case 1:
+  case 0:
     typeString = "float";
     break;
-  case 2:
+  case 1:
     typeString = "double";
     break;
-  case 3:
+  case 2:
     typeString = "uint";
     break;
   default:
@@ -300,13 +300,13 @@ int main (int argc, char *argv[]) {
   //printf("Please enter filename now: ");
 
   switch(type){
-  case 1:
+  case 0:
     runTests<float>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
     break;
-  case 2:
+  case 1:
     runTests<double>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
     break;
-  case 3:
+  case 2:
     runTests<uint>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK);
     break;
   default:

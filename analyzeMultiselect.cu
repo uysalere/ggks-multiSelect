@@ -263,9 +263,9 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
 
-    arrayOfKDistributionGenerators[kDistribution](arrayOfKs, stopK, size, generator);
+    //arrayOfKDistributionGenerators[kDistribution](arrayOfKs, stopK, size, generator);
 
-    curandDestroyGenerator(generator);
+    //curandDestroyGenerator(generator);
 
     /*
       printf("arrayOfKs = ");
@@ -282,6 +282,8 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     int a = i;
 
     // find bracket
+    arrayOfKDistributionGenerators[kDistribution](arrayOfKs, i, size, generator);
+
     while (compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 0)) {
       a=i;
       if(i<10000)
@@ -290,6 +292,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
         i*=1.5;   
       else 
         i*=1.2;   
+      arrayOfKDistributionGenerators[kDistribution](arrayOfKs, i, size, generator);
     }
 
     int b = i;     
@@ -299,6 +302,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     // bisection method
     while ( ((b-a)/2) > 1) {
       c = (a+b)/2;
+      arrayOfKDistributionGenerators[kDistribution](arrayOfKs, c, size, generator);
       if (compareMultiselectAlgorithms<T>(size, arrayOfKs, c, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 0))
         a=c;
       else
@@ -306,12 +310,13 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     printf("\n********a = %d**b = %d**c = %d**********\n", a, b, c);
     }
 
+    arrayOfKDistributionGenerators[kDistribution](arrayOfKs, (a+b)/2, size, generator);
     compareMultiselectAlgorithms<T>(size, arrayOfKs, (a+b)/2, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 1);
 
     printf ("\n\n\n\n **************** NUM K VALUES FOR SIZE = 2^%d is kListCount = %u ********************\n\n\n\n", (int) log2((float)size), (a+b)/2);
     i = ((a+b)/2) * .9;
+    curandDestroyGenerator(generator);
     
-    // }
   }
 }
 
@@ -342,31 +347,31 @@ int main (int argc, char *argv[]) {
   scanf("%u", &testCount);
 
   switch(type){
-  case 1:
+  case 0:
     typeString = "float";
     break;
-  case 2:
+  case 1:
     typeString = "double";
     break;
-  case 3:
+  case 2:
     typeString = "uint";
     break;
   default:
     break;
   }
 
-  snprintf(fileName, 128, "CR %s %s k-dist:%s 2^%d to 2^%d %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount);
+  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount);
   // snprintf(fileName, 128, "CR type:%u dist:%u k-dist:%u", type, distributionType, kDistribution);
   printf("File Name: %s \n", fileName);
 
   switch(type){
-  case 1:
+  case 0:
     runTests<float>(distributionType,fileName,startPower,stopPower,testCount,kDistribution);
     break;
-  case 2:
+  case 1:
     runTests<double>(distributionType,fileName,startPower,stopPower,testCount,kDistribution);
     break;
-  case 3:
+  case 2:
     runTests<uint>(distributionType,fileName,startPower,stopPower,testCount,kDistribution);
     break;
   default:
