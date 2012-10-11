@@ -37,9 +37,10 @@
 char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose Multiselect", "Bucket Multiselect", "Naive Bucket Multiselect"};
 
 
+
 using namespace std;
 template<typename T>
-int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv) {
+int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv, uint printBool) {
   T *h_vec, *h_vec_copy;
   float timeArray[NUMBEROFALGORITHMS][numTests];
   T * resultsArray[NUMBEROFALGORITHMS][numTests];
@@ -155,7 +156,6 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
             std::cout << "Right:\t";
             PrintFunctions::printBinary(resultsArray[0][i][m]);
 
-
             fileCsv << "\nkList = ";
             for (int z = 0; z < kListCount; z++)
               fileCsv << kList[z] << ", ";
@@ -200,8 +200,8 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
           }
   */
 
-  
-  if(timesWon[1] <= timesWon[0]) {
+  if(printBool) {
+    //  if(timesWon[1] <= timesWon[0]) {
     fileCsv << "\n\n\nk value count: " << kListCount << ", " << "2^" << (int) log2((float) size) << ", ratio:" << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
 
 
@@ -279,9 +279,37 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     //  cudaThreadExit();
     //  printf("NOW ADDING ANOTHER K\n\n");
 
-    while (compareMultiselectAlgorithms<T>(size, arrayOfKs, i++, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName));
-    printf ("\n\n\n\n **************** NUM K VALUES FOR SIZE = 2^%d is kListCount = %u ********************\n\n\n\n", (int) log2((float)size), i);
-    i *= .9;
+    int a = i;
+
+    // find bracket
+    while (compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 0)) {
+      a=i;
+      if(i<10000)
+        i*=2;   
+      else if(i<100000)
+        i*=1.5;   
+      else 
+        i*=1.2;   
+    }
+
+    int b = i;     
+    int c = (a+b)/2;
+    printf("\n********a = %d**b = %d**c = %d**********\n", a, b, c);
+
+    // bisection method
+    while ( ((b-a)/2) > 1) {
+      c = (a+b)/2;
+      if (compareMultiselectAlgorithms<T>(size, arrayOfKs, c, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 0))
+        a=c;
+      else
+        b=c;
+    printf("\n********a = %d**b = %d**c = %d**********\n", a, b, c);
+    }
+
+    compareMultiselectAlgorithms<T>(size, arrayOfKs, (a+b)/2, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 1);
+
+    printf ("\n\n\n\n **************** NUM K VALUES FOR SIZE = 2^%d is kListCount = %u ********************\n\n\n\n", (int) log2((float)size), (a+b)/2);
+    i = ((a+b)/2) * .9;
     
     // }
   }
@@ -290,26 +318,46 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 int main (int argc, char *argv[]) {
   char *fileName;
+  char *typeString;
+
+  fileName = (char*) malloc(128 * sizeof(char));
+  typeString = (char*) malloc(10 * sizeof(char));
 
   uint testCount;
-  fileName = (char*) malloc(60 * sizeof(char));
-  printf("Please enter filename now: ");
-  scanf("%s%",fileName);
-
   uint type,distributionType,startPower,stopPower,kDistribution;
   
   printf("Please enter the type of value you want to test:\n1-float\n2-double\n3-uint\n");
   scanf("%u", &type);
   printf("Please enter distribution type: ");
+  printDistributionOptions(type);
   scanf("%u", &distributionType);
-  printf("Please enter number of tests to run per K: ");
-  scanf("%u", &testCount);
+  printf("Please enter K distribution type: ");
+  printKDistributionOptions();
+  scanf("%u", &kDistribution);
   printf("Please enter Start power: ");
   scanf("%u", &startPower);
   printf("Please enter Stop power: ");
   scanf("%u", &stopPower); 
-  printf("Please enter K distribution type: ");
-  scanf("%u", &kDistribution);
+  printf("Please enter number of tests to run per K: ");
+  scanf("%u", &testCount);
+
+  switch(type){
+  case 1:
+    typeString = "float";
+    break;
+  case 2:
+    typeString = "double";
+    break;
+  case 3:
+    typeString = "uint";
+    break;
+  default:
+    break;
+  }
+
+  snprintf(fileName, 128, "alt_CR %s %s k-dist:%s 2^%d to 2^%d %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount);
+  // snprintf(fileName, 128, "CR type:%u dist:%u k-dist:%u", type, distributionType, kDistribution);
+  printf("File Name: %s \n", fileName);
 
   switch(type){
   case 1:
