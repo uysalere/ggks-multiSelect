@@ -410,6 +410,27 @@ namespace BucketMultiselect{
     cudaFree(d_randoms);
   }
 
+  // copyValuesInChunk<T>(output, d_output, newInput, d_kList, d_kIndices, kListCount);
+  // for (register int i = 0; i < kListCount; i++) 
+  //   CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+  template <typename T>
+  __global__ void copyValuesInChunk (T * outputVector, T * inputVector, uint * kList, uint * kIndices, int kListCount) {
+   
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < kListCount)
+      *(outputVector + *(kIndices + idx)) = *(inputVector + *(kList + idx) - 1);
+
+    /*
+    if (idx == 0)
+      printf ("idx = 0\n");
+    if (idx == kListCount - 1)
+    printf ("idx = %d\n", kListCount - 1);*/
+    // if (*(kIndices + idx) == kListCount - 1)
+    //  printf ("output[%d] = %f\n", *(kIndices + idx), *(outputVector + *(kIndices + idx)));
+  }
+
+
+
   /// ***********************************************************
   /// ***********************************************************
   /// **** PHASE ONE
@@ -519,9 +540,9 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMemcpy(kIndices, d_kIndices, kListCount * sizeof (uint), cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaMemcpy(kList, d_kList, kListCount * sizeof (uint), cudaMemcpyDeviceToHost)); 
 
-    cudaFree(d_kIndices); 
-    cudaFree(d_kList); 
-
+    //  cudaFree(d_kIndices); 
+    //  cudaFree(d_kList); 
+    
     int kOffset = kListCount - 1;
     while (kList[kOffset] == length) {
       output[kIndices[kListCount-1]] = maximum;
@@ -537,8 +558,9 @@ namespace BucketMultiselect{
       kListCount--;
       kOffset++;
     }
-    
 
+    for (int x = 0; x < kListCount + kOffset; x++)
+      printf ("output[%d] = %f\n", x, output[kIndices[x] - 1]);
 
     // timing(1, 3);
     /// ***********************************************************
@@ -659,9 +681,38 @@ namespace BucketMultiselect{
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
 
-    //printf("newInputLength = %d\n", newInputLength);
-    for (register int i = 0; i < kListCount; i++) 
-      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+
+    // printf("newInputLength = %d\n", newInputLength);
+    // for (register int i = 0; i < kListCount; i++) 
+    //  CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+
+    /* new strategy for copying k values back in a chunk */
+    
+  
+
+    T * d_output;
+    CUDA_CALL(cudaMalloc (&d_output, (kListCount + kOffset) * sizeof (T)));
+    CUDA_CALL(cudaMemcpy (d_output, output, (kListCount + kOffset) * sizeof (T), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy (d_kList, kList, (kListCount + kOffset) * sizeof (uint), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy (d_kIndices, kIndices, (kListCount + kOffset) * sizeof (uint), cudaMemcpyHostToDevice));
+
+   
+
+    threads = MAX_THREADS_PER_BLOCK;
+    if (kListCount < threads)
+      threads = kListCount;
+    blocks = (int) ceil (kListCount / (float) threads);
+
+    copyValuesInChunk<<<blocks, threads>>>(d_output, newInput, d_kList, d_kIndices, kListCount);
+
+    cudaMemcpy (output, d_output, kListCount * sizeof (T), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_output);
+    cudaFree(d_kIndices); 
+    cudaFree(d_kList); 
+    
+
+    /* done new strategy for copying k values back in a chunk */
 
     // timing(1, 10);
 
