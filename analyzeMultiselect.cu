@@ -355,7 +355,7 @@ int main (int argc, char *argv[]) {
     break;
   }
 
-  snprintf(fileName, 128, "alt_CR %s %s k-dist:%s 2^%d to 2^%d %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount);
+  snprintf(fileName, 128, "CR %s %s k-dist:%s 2^%d to 2^%d %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount);
   // snprintf(fileName, 128, "CR type:%u dist:%u k-dist:%u", type, distributionType, kDistribution);
   printf("File Name: %s \n", fileName);
 
