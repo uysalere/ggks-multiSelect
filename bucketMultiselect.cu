@@ -417,7 +417,7 @@ namespace BucketMultiselect{
   __global__ void copyValuesInChunk (T * outputVector, T * inputVector, uint * kList, uint * kIndices, int kListCount) {
    
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < kListCount)
+    if (idx <= kListCount)
       *(outputVector + *(kIndices + idx)) = *(inputVector + *(kList + idx) - 1);
 
     /*
@@ -543,24 +543,21 @@ namespace BucketMultiselect{
     //  cudaFree(d_kIndices); 
     //  cudaFree(d_kList); 
     
-    int kOffset = kListCount - 1;
-    while (kList[kOffset] == length) {
+    int kOffsetMax = kListCount - 1;
+    while (kList[kOffsetMax] == length) {
       output[kIndices[kListCount-1]] = maximum;
       kListCount--;
-      kOffset--;
+      kOffsetMax--;
     }
 
-    kOffset = 0;
+    int kOffsetMin = 0;
     while (kList[0] == 1) {
       output[kIndices[0]] = minimum;
       kIndices++;
       kList++;
       kListCount--;
-      kOffset++;
+      kOffsetMin++;
     }
-
-    for (int x = 0; x < kListCount + kOffset; x++)
-      printf ("output[%d] = %f\n", x, output[kIndices[x] - 1]);
 
     // timing(1, 3);
     /// ***********************************************************
@@ -691,10 +688,10 @@ namespace BucketMultiselect{
   
 
     T * d_output;
-    CUDA_CALL(cudaMalloc (&d_output, (kListCount + kOffset) * sizeof (T)));
-    CUDA_CALL(cudaMemcpy (d_output, output, (kListCount + kOffset) * sizeof (T), cudaMemcpyHostToDevice));
-    CUDA_CALL(cudaMemcpy (d_kList, kList, (kListCount + kOffset) * sizeof (uint), cudaMemcpyHostToDevice));
-    CUDA_CALL(cudaMemcpy (d_kIndices, kIndices, (kListCount + kOffset) * sizeof (uint), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMalloc (&d_output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T)));
+    CUDA_CALL(cudaMemcpy (d_output, output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy (d_kList, kList, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy (d_kIndices, kIndices, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
 
    
 
@@ -705,7 +702,7 @@ namespace BucketMultiselect{
 
     copyValuesInChunk<<<blocks, threads>>>(d_output, newInput, d_kList, d_kIndices, kListCount);
 
-    cudaMemcpy (output, d_output, kListCount * sizeof (T), cudaMemcpyDeviceToHost);
+    cudaMemcpy (output, d_output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T), cudaMemcpyDeviceToHost);
 
     cudaFree(d_output);
     cudaFree(d_kIndices); 
@@ -717,7 +714,7 @@ namespace BucketMultiselect{
     // timing(1, 10);
 
     cudaFree(newInput); 
-    free (kIndices - kOffset);
+    free (kIndices - kOffsetMin);
 
     return 1;
   }
