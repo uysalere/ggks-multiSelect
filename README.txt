@@ -1,4 +1,5 @@
-/* Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
+/* Copyright 2012 Emircan Uysaler, Jeffrey Blanchard, Erik Opavsky
+ * Copyright 2011 Russel Steinbach, Jeffrey Blanchard, Bradley Gordon,
  *   and Toluwaloju Alabi
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -12,9 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  */
-
-Authors: Russel Steinbach, Bradley Gordon, Jeffrey Blanchard, and
-Toluwaloju Alabi.
 
 GGKS project
 All original work done for this project is licensed under the Apache 2.0
