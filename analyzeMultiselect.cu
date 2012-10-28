@@ -107,6 +107,8 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
 
     winnerArray[i] = 0;
     float currentWinningTime = INFINITY;
+
+
     //run the various timing functions
     for(x = 0; x < NUMBEROFALGORITHMS; x++){
       j = runOrder[x];
@@ -161,6 +163,7 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
               fileCsv << kList[z] << ", ";
           }
         }
+    fileCsv << flag << ", ";
   }
   
   //calculate the total time each algorithm took
@@ -168,14 +171,11 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
     for(j = 0; j < NUMBEROFALGORITHMS;j++)
       if(algorithmsToTest[j])
         totalTimesPerAlgorithm[j] += timeArray[j][i];
-
-
   //count the number of times each algorithm won. 
   for(i = 0; i < numTests;i++)
     timesWon[winnerArray[i]]++;
 
   printf("\n\n");
-
   //print out the average times
   for(i = 0; i < NUMBEROFALGORITHMS; i++)
     if(algorithmsToTest[i])
@@ -185,42 +185,22 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
     if(algorithmsToTest[i])
       printf("%s won %u times\n", namesOfMultiselectTimingFunctions[i], timesWon[i]);
 
-  /*
-  for(i = 0; i < numTests; i++)
-    for(j = 1; j < NUMBEROFALGORITHMS; j++)
-      for (m = 0; m < kListCount; m++)
-        if(algorithmsToTest[j])
-          if(resultsArray[j][i][m] != resultsArray[0][i][m]) {
-            std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test " << i + 1 << " at k[" << m << "].  It got "<< resultsArray[j][i][m];
-            std::cout << " instead of " << resultsArray[0][i][m] << ".\n" ;
-            std::cout << "RESULT:\t";
-            PrintFunctions::printBinary(resultsArray[j][i][m]);
-            std::cout << "Right:\t";
-            PrintFunctions::printBinary(resultsArray[0][i][m]);
-          }
-  */
 
+  //print the Crossover details
   if(printBool) {
-    //  if(timesWon[1] <= timesWon[0]) {
-    fileCsv << "\n\n\nk value count: " << kListCount << ", " << "2^" << (int) log2((float) size) << ", ratio:" << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
-
-
+    fileCsv << "\n\nk value count: " << kListCount << ", " << "2^" << (int) log2((float) size) << ", ratio:" << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
     for(x = 0; x < NUMBEROFALGORITHMS; x++)
       if(algorithmsToTest[x])
         fileCsv << namesOfMultiselectTimingFunctions[x] << "," << totalTimesPerAlgorithm[x] / numTests << ",";
-
-    fileCsv << "\n\n\n";
-
+    fileCsv << "\n\n";
   }
 
 
-
+  // free results
   for(i = 0; i < numTests; i++) 
     for(m = 0; m < NUMBEROFALGORITHMS; m++) 
       if(algorithmsToTest[m])
         free(resultsArray[m][i]);
-
-
   //free h_vec and h_vec_copy
   free(h_vec);
   free(h_vec_copy);
@@ -242,18 +222,6 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     uint stopK = size * .01;
     uint arrayOfKs[stopK];
 
-    /*
-    //calculate k values
-    arrayOfKs[0] = 2;
-    //  arrayOfKs[1] = (uint) (.01 * (float) size);
-    //  arrayOfKs[2] = (uint) (.025 * (float) size);
-    for(i = 1; i <= num - 2; i++) 
-    arrayOfKs[i] = (uint) (( i / (float) num ) * size);
-    
-    //  arrayOfKs[num-3] = (uint) (.9975 * (float) size);
-    //  arrayOfKs[num-2] = (uint) (.999 * (float) size);
-    arrayOfKs[num-1] = (uint) (size - 2); 
-    */
     unsigned long long seed;
     timeval t1;
     gettimeofday(&t1, NULL);
@@ -263,25 +231,10 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
 
-    //arrayOfKDistributionGenerators[kDistribution](arrayOfKs, stopK, size, generator);
-
-    //curandDestroyGenerator(generator);
-
-    /*
-      printf("arrayOfKs = ");
-      for(uint j = 0; j < stopK+1; j++)
-      printf("%u; ", arrayOfKs[j]);
-      printf("\n\n");
-    */
-
-    // for(i = 1; i <= stopK; i+=kJump) {
-    //  cudaDeviceReset();
-    //  cudaThreadExit();
-    //  printf("NOW ADDING ANOTHER K\n\n");
-
-    int a = i;
 
     // find bracket
+    int a = i;
+
     arrayOfKDistributionGenerators[kDistribution](arrayOfKs, i, size, generator);
 
     while (compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 0)) {
@@ -297,7 +250,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
     int b = i;     
     int c = (a+b)/2;
-    printf("\n********a = %d**b = %d**c = %d**********\n", a, b, c);
+    //printf("\n********a = %d**b = %d**c = %d**********\n", a, b, c);
 
     // bisection method
     while ( ((b-a)/2) > 1) {
@@ -307,7 +260,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
         a=c;
       else
         b=c;
-    printf("\n********a = %d**b = %d**c = %d**********\n", a, b, c);
+      //printf("\n********a = %d**b = %d**c = %d**********\n", a, b, c);
     }
 
     arrayOfKDistributionGenerators[kDistribution](arrayOfKs, (a+b)/2, size, generator);
@@ -331,7 +284,7 @@ int main (int argc, char *argv[]) {
   uint testCount;
   uint type,distributionType,startPower,stopPower,kDistribution;
   
-  printf("Please enter the type of value you want to test:\n1-float\n2-double\n3-uint\n");
+  printf("Please enter the type of value you want to test:\n0-float\n1-double\n2-uint\n");
   scanf("%u", &type);
   printf("Please enter distribution type: ");
   printDistributionOptions(type);
@@ -360,7 +313,7 @@ int main (int argc, char *argv[]) {
     break;
   }
 
-  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount);
+  snprintf(fileName, 128, "CR %s %s k-dist:%s 2^%d to 2^%d %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount);
   // snprintf(fileName, 128, "CR type:%u dist:%u k-dist:%u", type, distributionType, kDistribution);
   printf("File Name: %s \n", fileName);
 
