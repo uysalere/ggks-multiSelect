@@ -309,7 +309,7 @@ namespace BucketMultiselect{
 
   template <typename T>
   void createRandomVector(T * d_vec, int size, uint * mainSeed) {
-    timeval t1;
+    // timeval t1;
     uint seed;
 
     // gettimeofday(&t1, NULL);

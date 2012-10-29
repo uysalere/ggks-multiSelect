@@ -51,7 +51,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
 
   results_t<T> *temp;
   ofstream fileCsv;
-  timeval t1;
+  //timeval t1;
  
   typedef results_t<T>* (*ptrToTimingFunction)(T*, uint, uint *, uint, uint *);
   typedef void (*ptrToGeneratingFunction)(T*, uint, curandGenerator_t);
@@ -181,11 +181,11 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
             PrintFunctions::printBinary(resultsArray[j][i][m]);
             std::cout << "Right:\t";
             PrintFunctions::printBinary(resultsArray[0][i][m]);
-            std::cout << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ", mainSeed" << mainSeed;
+            std::cout << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ", mainSeed " << mainSeed << "\n";
 
             // print to file
             fileCsv << "\nERROR!!! on" << namesOfMultiselectTimingFunctions[j] << " did not return the correct answer on test " << i + 1 << " at k[" << m << "].  "; 
-            fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", kListCount = " << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ", mainSeed" << mainSeed << "\n";
+            fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", kListCount = " << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ", mainSeed " << mainSeed << "\n";
             
           }
 
