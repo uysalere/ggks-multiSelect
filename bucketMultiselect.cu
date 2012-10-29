@@ -234,7 +234,7 @@ namespace BucketMultiselect{
     for (int i = 0; i <= loop; i++) {      
       threadIndex = i * blockDim.x + threadIdx.x;
       if(threadIndex < numBuckets) {
-        sharedBuckets[threadIndex]=buckets[threadIndex];
+        sharedBuckets[threadIndex] = buckets[threadIndex];
         sharedBucketCounts[threadIndex] = d_bucketCount[blockIdx.x * numTotalBuckets + sharedBuckets[threadIndex]];
       }
     }
@@ -308,13 +308,15 @@ namespace BucketMultiselect{
   };
 
   template <typename T>
-  void createRandomVector(T * d_vec, int size) {
+  void createRandomVector(T * d_vec, int size, uint * mainSeed) {
     timeval t1;
     uint seed;
 
-    gettimeofday(&t1, NULL);
-    seed = t1.tv_usec * t1.tv_sec;
-  
+    // gettimeofday(&t1, NULL);
+    // seed = t1.tv_usec * t1.tv_sec;
+    // *mainSeed = seed;
+    seed = *mainSeed;
+
     thrust::device_ptr<T> d_ptr(d_vec);
     thrust::transform (thrust::counting_iterator<uint>(0),thrust::counting_iterator<uint>(size), d_ptr, RandomNumberFunctor(seed));
   }
@@ -330,7 +332,7 @@ namespace BucketMultiselect{
   }
 
   template <typename T>
-  void generatePivots (uint * pivots, double * slopes, uint * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, uint min, uint max) {
+  void generatePivots (uint * pivots, double * slopes, uint * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, uint min, uint max, uint * mainSeed) {
   
     float * d_randomFloats;
     uint * d_randomInts;
@@ -342,7 +344,7 @@ namespace BucketMultiselect{
   
     d_randomInts = (uint *) d_randomFloats;
 
-    createRandomVector (d_randomFloats, sizeOfSample);
+    createRandomVector (d_randomFloats, sizeOfSample, mainSeed);
 
     // converts randoms floats into elements from necessary indices
     enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randomFloats, d_randomInts, d_list, sizeOfVector);
@@ -373,7 +375,7 @@ namespace BucketMultiselect{
   }
   
   template <typename T>
-  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, T min, T max) {
+  void generatePivots (T * pivots, double * slopes, T * d_list, int sizeOfVector, int numPivots, int sizeOfSample, int totalSmallBuckets, T min, T max, uint * mainSeed) {
     T * d_randoms;
     int endOffset = 22;
     int pivotOffset = (sizeOfSample - endOffset * 2) / (numPivots - 3);
@@ -381,7 +383,7 @@ namespace BucketMultiselect{
 
     cudaMalloc (&d_randoms, sizeof (T) * sizeOfSample);
   
-    createRandomVector (d_randoms, sizeOfSample);
+    createRandomVector (d_randoms, sizeOfSample, mainSeed);
 
     // converts randoms floats into elements from necessary indices
     enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randoms, d_list, sizeOfVector);
@@ -439,7 +441,7 @@ namespace BucketMultiselect{
 
   /* this function finds the kth-largest element from the input array */
   template <typename T>
-  T phaseOne (T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int numBuckets, int numPivots) {    
+  T phaseOne (T* d_vector, int length, uint * kList, int kListCount, T * output, int blocks, int threads, int numBuckets, int numPivots, uint * mainSeed) {    
     /// ***********************************************************
     /// ****STEP 1: Find Min and Max of the whole vector
     /// ****We don't need to go through the rest of the algorithm if it's flat
@@ -570,7 +572,7 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMalloc(&d_pivots, numPivots * sizeof(T)));
 
     // Find bucket sizes using a randomized selection
-    generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum);
+    generatePivots<T>(pivots, slopes, d_vector, length, numPivots, sampleSize, numBuckets, minimum, maximum, mainSeed);
     
     // make any slopes that were infinity due to division by zero (due to no 
     //  difference between the two associated pivots) into zero, so all the
@@ -701,7 +703,7 @@ namespace BucketMultiselect{
       threads = kListCount;
     blocks = (int) ceil (kListCount / (float) threads);
 
-    copyValuesInChunk<<<blocks, threads>>>(d_output, newInput, d_kList, d_kIndices, kListCount);
+    copyValuesInChunk<T><<<blocks, threads>>>(d_output, newInput, d_kList, d_kIndices, kListCount);
 
     cudaMemcpy (output, d_output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T), cudaMemcpyDeviceToHost);
 
@@ -720,7 +722,7 @@ namespace BucketMultiselect{
   }
 
   template <typename T>
-  T bucketMultiselectWrapper (T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads) { 
+  T bucketMultiselectWrapper (T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads, uint * mainSeed) { 
 
     int numBuckets = 8192;
     uint kList[kListCount];
@@ -748,7 +750,7 @@ namespace BucketMultiselect{
       numBuckets = 4096;
 
    
-    phaseOne (d_vector, length, kList, kListCount, outputs, blocks, threads, numBuckets, 17);
+    phaseOne (d_vector, length, kList, kListCount, outputs, blocks, threads, numBuckets, 17, mainSeed);
 
     return 1;
   }
