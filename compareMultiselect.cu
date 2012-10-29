@@ -34,12 +34,12 @@
 #include "multiselectTimingFunctions.cu"
 
 #define NUMBEROFALGORITHMS 3
-char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose Multiselect", "Bucket Multiselect", "Naive Bucket Multiselect"};
+char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose Multiselect", "Bucket Multiselect", "Stable Sort and Choose Multiselect"};
 
 
 using namespace std;
 template<typename T>
-void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv) {
+void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv, unsigned long long originalSeed, time_t srandSeed) {
   T *h_vec, *h_vec_copy;
   float timeArray[NUMBEROFALGORITHMS][numTests];
   T * resultsArray[NUMBEROFALGORITHMS][numTests];
@@ -54,7 +54,9 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
   ofstream fileCsv;
   timeval t1;
  
-  typedef results_t<T>* (*ptrToTimingFunction)(T*, uint, uint *, uint);
+  uint mainSeed;
+
+  typedef results_t<T>* (*ptrToTimingFunction)(T*, uint, uint *, uint, uint *);
   typedef void (*ptrToGeneratingFunction)(T*, uint, curandGenerator_t);
 
   //these are the functions that can be called
@@ -81,7 +83,8 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
 
   //create the random generator.
   curandGenerator_t generator;
-  srand(unsigned(time(NULL)));
+  time_t generatorSeed = time(NULL);
+  srand (unsigned (generatorSeed));
 
   printf("The distribution is: %s\n", namesOfGeneratingFunctions[generateType]);
   printf("The k distribution is: %s\n", namesOfKGenerators[kGenerateType]);
@@ -94,10 +97,10 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
       runOrder[m] = m;
     
     std::random_shuffle(runOrder, runOrder + NUMBEROFALGORITHMS);
-    fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
+    //  fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ",";
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
-    printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests,size,kListCount);
+    printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests, size, kListCount);
     //generate the random vector using the specified distribution
     arrayOfGenerators[generateType](h_vec, size, generator);
 
@@ -113,8 +116,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
 
         //run timing function j
         printf("TESTING: %u\n", j);
-        temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kListCount);
-
+        temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kListCount, &mainSeed);
         //record the time result
         timeArray[j][i] = temp->time;
         //record the value returned
@@ -136,6 +138,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
       if(algorithmsToTest[x])
         fileCsv << namesOfMultiselectTimingFunctions[x] << "," << timeArray[x][i] << ",";
 
+    // check if results are correct
     uint flag = 0;
     for(m = 1; m < NUMBEROFALGORITHMS;m++)
       if(algorithmsToTest[m])
@@ -181,6 +184,12 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
             PrintFunctions::printBinary(resultsArray[j][i][m]);
             std::cout << "Right:\t";
             PrintFunctions::printBinary(resultsArray[0][i][m]);
+            std::cout << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ", mainSeed " << mainSeed << "\n";
+
+            // print to file
+            fileCsv << "\nERROR!!! on" << namesOfMultiselectTimingFunctions[j] << " did not return the correct answer on test " << i + 1 << " at k[" << m << "].  "; 
+            fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", kListCount = " << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", srandSeed " << srandSeed << ", seed " << seed << ", mainSeed " << mainSeed << "\n";
+            
           }
 
   for(i = 0; i < numTests; i++) 
@@ -200,33 +209,23 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
 template<typename T>
 void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, 
                uint kDistribution, uint startK, uint stopK, uint kJump) {
-  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
+  uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 1};
   uint size;
   uint i;
   uint arrayOfKs[stopK+1];
   
   
   for(size = (1 << startPower); size <= (1 << stopPower); size *= 2) {
-    /*
-    //calculate k values
-    arrayOfKs[0] = 2;
-    //  arrayOfKs[1] = (uint) (.01 * (float) size);
-    //  arrayOfKs[2] = (uint) (.025 * (float) size);
-    for(i = 1; i <= num - 2; i++) 
-    arrayOfKs[i] = (uint) (( i / (float) num ) * size);
-    
-    //  arrayOfKs[num-3] = (uint) (.9975 * (float) size);
-    //  arrayOfKs[num-2] = (uint) (.999 * (float) size);
-    arrayOfKs[num-1] = (uint) (size - 2); 
-    */
-    unsigned long long seed;
+
+    unsigned long long originalSeed;
     timeval t1;
     gettimeofday(&t1, NULL);
-    seed = t1.tv_usec * t1.tv_sec;
+    originalSeed = t1.tv_usec * t1.tv_sec;
     curandGenerator_t generator;
-    srand(unsigned(time(NULL)));
+    time_t srandSeed = time(NULL);
+    srand(unsigned(srandSeed));
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
-    curandSetPseudoRandomGeneratorSeed(generator,seed);
+    curandSetPseudoRandomGeneratorSeed(generator,originalSeed);
 
     arrayOfKDistributionGenerators[kDistribution](arrayOfKs, stopK, size, generator);
 
@@ -243,7 +242,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
       cudaDeviceReset();
       cudaThreadExit();
       printf("NOW ADDING ANOTHER K\n\n");
-      compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName);
+      compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, originalSeed, srandSeed);
     }
   }
 }

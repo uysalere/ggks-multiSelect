@@ -48,7 +48,7 @@ __global__ void copyInChunk(T * outputVector, T * inputVector, uint * kList, uin
 }
 
 template<typename T>
-results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kVals, uint kCount) {
+results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kVals, uint kCount, uint * mainSeed) {
   T * d_vec;
   results_t<T> * result;
   float time;
@@ -94,7 +94,7 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
 
 // FUNCTION TO TIME BUCKET MULTISELECT
 template<typename T>
-results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount) {
+results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount, uint * mainSeed) {
   T * d_vec;
   results_t<T> * result;
   float time;
@@ -107,7 +107,7 @@ results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, 
   cudaEventRecord(start, 0);
 
   // bucketMultiselectWrapper (T * d_vector, int length, uint * kVals_ori, uint kCount, T * outputs, int blocks, int threads)
-  BucketMultiselect::bucketMultiselectWrapper(d_vec, numElements, kVals, kCount, result->vals, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+  BucketMultiselect::bucketMultiselectWrapper(d_vec, numElements, kVals, kCount, result->vals, dp.multiProcessorCount, dp.maxThreadsPerBlock, mainSeed);
  
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
@@ -120,7 +120,7 @@ results_t<T>* timeBucketMultiselect (T * h_vec, uint numElements, uint * kVals, 
 
 // FUNCTION TO TIME NAIVE BUCKET MULTISELECT
 template<typename T>
-results_t<T>* timeNaiveBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount) {
+results_t<T>* timeNaiveBucketMultiselect (T * h_vec, uint numElements, uint * kVals, uint kCount, uint * mainSeed) {
   T * d_vec;
   results_t<T> * result;
   float time;
@@ -130,11 +130,21 @@ results_t<T>* timeNaiveBucketMultiselect (T * h_vec, uint numElements, uint * kV
 
   setupForTiming(start, stop, h_vec, &d_vec, &result, numElements, kCount);
  
+  /*
   cudaEventRecord(start, 0);
 
   // bucketMultiselectWrapper (T * d_vector, int length, uint * kVals_ori, uint kCount, T * outputs, int blocks, int threads)
   NaiveBucketMultiselect::naiveBucketMultiselectWrapper(d_vec, numElements, kVals, kCount, result->vals, dp.multiProcessorCount, dp.maxThreadsPerBlock);
- 
+  */
+
+  cudaEventRecord(start, 0);
+  thrust::device_ptr<T> dev_ptr(d_vec);
+  thrust::sort(dev_ptr, dev_ptr + numElements);
+
+  
+  for (int i = 0; i < kCount; i++)
+    cudaMemcpy(result->vals + i, d_vec + (numElements - kVals[i]), sizeof (T), cudaMemcpyDeviceToHost);
+  
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&time, start, stop);
