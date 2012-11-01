@@ -19,6 +19,8 @@
 #include <thrust/random.h>
 #include <thrust/sort.h>
 #include <thrust/transform_reduce.h>
+#include <iostream>
+#include <bitset>
 
 namespace BucketMultiselect{
   using namespace std;
@@ -410,6 +412,10 @@ namespace BucketMultiselect{
     slopes[numPivots - 2] = numSmallBuckets / (double) (pivots[numPivots - 1] - pivots[numPivots - 2]);
   
     cudaFree(d_randoms);
+
+    for (int i = 0; i < numPivots; i++)
+      PrintFunctions::printBinary (pivots[i]);
+
   }
 
   // copyValuesInChunk<T>(output, d_output, newInput, d_kList, d_kIndices, kListCount);

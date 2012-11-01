@@ -10,6 +10,7 @@
 #include <iostream>
 #include <fstream>
 #include <sys/time.h>
+#include <iomanip>
 
 #include <algorithm>
 //Include various thrust items that are used
@@ -36,6 +37,10 @@
 #define NUMBEROFALGORITHMS 3
 char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose Multiselect", "Bucket Multiselect", "Stable Sort and Choose Multiselect"};
 
+union uf{
+  float f;
+  unsigned int u;
+};
 
 using namespace std;
 template<typename T>
@@ -100,6 +105,27 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests, size, kListCount);
     //generate the random vector using the specified distribution
     arrayOfGenerators[generateType](h_vec, size, generator);
+
+    // print the vector
+    ofstream vectorFileCsv;
+    uf bits;
+    vectorFileCsv.open("vector3.csv", ios_base::app);
+    for (int z = 0; z < size; z++) {
+      float f = *(h_vec + z);
+      vectorFileCsv << "\'";
+      bits.f= f;
+      for(int i = 0; i < 32; i++){
+        /*
+        if(! (i % 4)){
+          vectorFileCsv << "|";
+        }
+        */
+        vectorFileCsv << ((bits.u >> (32 - 1 - i)) & 0x1);
+      }
+      vectorFileCsv << "\'\n";
+    }
+      
+    vectorFileCsv.close();
 
     //copy the vector to h_vec_copy, which will be used to restore it later
     memcpy(h_vec_copy, h_vec, size * sizeof(T));
@@ -184,7 +210,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
             std::cout << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ", mainSeed " << mainSeed << "\n";
 
             // print to file
-            fileCsv << "\nERROR!!! on" << namesOfMultiselectTimingFunctions[j] << " did not return the correct answer on test " << i + 1 << " at k[" << m << "].  "; 
+            fileCsv << "\nERROR!!! on" << namesOfMultiselectTimingFunctions[j] << " did not return the correct answer on test " << i + 1 << " at k[" << m << "]=" << kVals[m] << "\n" ; 
             fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", kListCount = " << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ", mainSeed " << mainSeed << "\n";
             
           }
