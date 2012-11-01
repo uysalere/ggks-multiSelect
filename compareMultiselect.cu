@@ -271,11 +271,11 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 int main (int argc, char *argv[]) {
  
-  uint mainSeed = 1466518343;
-  unsigned long long originalSeed =386954181486218 ;
-  unsigned long long seed = 1215214505056927;
-  time_t generatorSeed = 1351465169;
-  time_t srandSeed = 1351465069;
+  uint mainSeed = 1466518343; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long originalSeed = 386954181486218; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long seed = 1215214505056927; // THIS MUST BE FIXED TO GET ERROR
+  time_t generatorSeed = time(NULL);//1351465169; // THIS CAN BE RANDOM
+  time_t srandSeed = time (NULL);//1351465069;  // this can also be random
 
   char *fileName;
   char *typeString;

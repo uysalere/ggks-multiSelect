@@ -256,7 +256,7 @@ namespace BucketMultiselect{
         maxBucketIndex = numBuckets-1;
 
         //copy elements in the kth buckets to the new array
-        for(int j = 1; j < numBuckets; j*=2) {  
+        for(int j = 1; j < numBuckets - 1; j*=2) {  
           midBucketIndex = (maxBucketIndex + minBucketIndex) / 2;
           if (temp > sharedBuckets[midBucketIndex])
             minBucketIndex=midBucketIndex+1;
@@ -413,8 +413,17 @@ namespace BucketMultiselect{
   
     cudaFree(d_randoms);
 
-    for (int i = 0; i < numPivots; i++)
+    for (int i = 0; i < numPivots; i++) {
+      printf ("bigBucket[%d] = %f\n", i, pivots[i]);
       PrintFunctions::printBinary (pivots[i]);
+    }
+    for (int i = 0; i < numPivots - 1; i++)
+      for (int j = 0; j < numSmallBuckets; j++) {
+        float f = pivots[i] + j / slopes[i];
+        printf ("smallBucket[%d]: %f,\t", i * numPivots + j, f);
+        PrintFunctions::printBinary (f);
+        printf("\n");
+      }
 
   }
 
