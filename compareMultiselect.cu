@@ -85,6 +85,10 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
 
   printf("The distribution is: %s\n", namesOfGeneratingFunctions[generateType]);
   printf("The k distribution is: %s\n", namesOfKGenerators[kGenerateType]);
+
+  //*/******************* START RUNNING TESTS *************
+  /***********************************************/
+
   for(i = 0; i < numTests; i++) {
     // cudaDeviceReset();
     gettimeofday(&t1, NULL);
@@ -97,7 +101,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
-    printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests,size,kListCount);
+    printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests, size, kListCount);
     //generate the random vector using the specified distribution
     arrayOfGenerators[generateType](h_vec, size, generator);
 
@@ -140,9 +144,19 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     for(m = 1; m < NUMBEROFALGORITHMS;m++)
       if(algorithmsToTest[m])
         for (j = 0; j < kListCount; j++) {
-          T tempResult = resultsArray[0][i][j];
-          if(resultsArray[m][i][j] != tempResult)
+          if(resultsArray[m][i][j] != resultsArray[0][i][j]) {
             flag++;
+            fileCsv << "\nERROR ON TEST " << i << " of " << numTests << " tests!!!!!\n";
+            fileCsv << "vector size = " << size << "\nvector seed = " << seed << "\n";
+            fileCsv << "kListCount = " << kListCount << "\n";
+            fileCsv << "wrong k = " << kVals[j] << " kIndex = " << j << " wrong result = " << resultsArray[m][i][j] << " correct result = " <<  resultsArray[0][i][j] << "\n";
+            std::cout <<namesOfMultiselectTimingFunctions[m] <<" did not return the correct answer on test " << i + 1 << " at k[" << j << "].  It got "<< resultsArray[m][i][j];
+            std::cout << " instead of " << resultsArray[0][i][j] << ".\n" ;
+            std::cout << "RESULT:\t";
+            PrintFunctions::printBinary(resultsArray[m][i][j]);
+            std::cout << "Right:\t";
+            PrintFunctions::printBinary(resultsArray[0][i][j]);
+          }
         }
 
     fileCsv << flag << "\n";
@@ -170,24 +184,12 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     if(algorithmsToTest[i])
       printf("%s won %u times\n", namesOfMultiselectTimingFunctions[i], timesWon[i]);
 
-  for(i = 0; i < numTests; i++)
-    for(j = 1; j < NUMBEROFALGORITHMS; j++)
-      for (m = 0; m < kListCount; m++)
-        if(algorithmsToTest[j])
-          if(resultsArray[j][i][m] != resultsArray[0][i][m]) {
-            std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test " << i + 1 << " at k[" << m << "].  It got "<< resultsArray[j][i][m];
-            std::cout << " instead of " << resultsArray[0][i][m] << ".\n" ;
-            std::cout << "RESULT:\t";
-            PrintFunctions::printBinary(resultsArray[j][i][m]);
-            std::cout << "Right:\t";
-            PrintFunctions::printBinary(resultsArray[0][i][m]);
-          }
 
+  // free results
   for(i = 0; i < numTests; i++) 
     for(m = 0; m < NUMBEROFALGORITHMS; m++) 
       if(algorithmsToTest[m])
         free(resultsArray[m][i]);
-
 
   //free h_vec and h_vec_copy
   free(h_vec);

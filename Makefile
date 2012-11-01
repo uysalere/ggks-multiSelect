@@ -31,10 +31,10 @@ compareAlgorithms: compareAlgorithms.cu bucketSelect.cu randomizedBucketSelect.c
 #bucketSelect: bucketSelect.cu
 #	$(NVCC) -o bucketSelect bucketSelect.cu $(NVCCFLAGS)
 
-compareMultiselect: compareMultiselect.cu bucketMultiselect.cu naiveBucketMultiselect.cu generateProblems.cu noExtremaRandomizedBucketSelect.cu
+compareMultiselect: compareMultiselect.cu bucketMultiselect.cu naiveBucketMultiselect.cu generateProblems.cu noExtremaRandomizedBucketSelect.cu multiselectTimingFunctions.cu
 	$(NVCC) -o compareMultiselect compareMultiselect.cu $(NVCCFLAGS)
 
-analyzeMultiselect: analyzeMultiselect.cu bucketMultiselect.cu
+analyzeMultiselect: analyzeMultiselect.cu bucketMultiselect.cu multiselectTimingFunctions.cu
 	$(NVCC) -o analyzeMultiselect analyzeMultiselect.cu $(NVCCFLAGS)
 
 clean:

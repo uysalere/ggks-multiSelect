@@ -73,7 +73,7 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
   fileCsv.open(fileNamecsv, ios_base::app);
   
   //zero out the totals and times won
-  bzero(totalTimesPerAlgorithm, NUMBEROFALGORITHMS * sizeof(uint));
+  bzero(totalTimesPerAlgorithm, NUMBEROFALGORITHMS * sizeof(float));
   bzero(timesWon, NUMBEROFALGORITHMS * sizeof(uint));
 
   //allocate space for h_vec, and h_vec_copy
@@ -98,7 +98,7 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
     //fileCsv << size << "," << kList[0] << "," << kList[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
-    printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests,size,kListCount);
+    printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests, size, kListCount);
     //generate the random vector using the specified distribution
     arrayOfGenerators[generateType](h_vec, size, generator);
 
@@ -107,7 +107,6 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
 
     winnerArray[i] = 0;
     float currentWinningTime = INFINITY;
-
 
     //run the various timing functions
     for(x = 0; x < NUMBEROFALGORITHMS; x++){
@@ -135,32 +134,28 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
     }
 
     curandDestroyGenerator(generator);
-    /*
-    for(x = 0; x < NUMBEROFALGORITHMS; x++)
-      if(algorithmsToTest[x])
-        fileCsv << namesOfMultiselectTimingFunctions[x] << "," << timeArray[x][i] << ",";
-    */
+
     uint flag = 0;
     for(m = 1; m < NUMBEROFALGORITHMS;m++)
       if(algorithmsToTest[m])
         for (j = 0; j < kListCount; j++) {
-          T tempResult = resultsArray[0][i][j];
-          if(resultsArray[m][i][j] != tempResult) {
+          if(resultsArray[m][i][j] != resultsArray[0][i][j]) {
             flag++;
             fileCsv << "\nERROR ON TEST " << i << " of " << numTests << " tests!!!!!\n";
             fileCsv << "vector size = " << size << "\nvector seed = " << seed << "\n";
             fileCsv << "kListCount = " << kListCount << "\n";
-            // fileCsv << "wrong k = " << kList[j] << "kIndex = " << j << "wrong result = " << resultsArray[m][i][j] << "correct result = " << tempResult  << "\n";
-            std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test " << i + 1 << " at k[" << m << "].  It got "<< resultsArray[j][i][m];
-            std::cout << " instead of " << resultsArray[0][i][m] << ".\n" ;
+            fileCsv << "wrong k = " << kList[j] << " kIndex = " << j << " wrong result = " << resultsArray[m][i][j] << " correct result = " <<  resultsArray[0][i][j] << "\n";
+            std::cout <<namesOfMultiselectTimingFunctions[m] <<" did not return the correct answer on test " << i + 1 << " at k[" << j << "].  It got "<< resultsArray[m][i][j];
+            std::cout << " instead of " << resultsArray[0][i][j] << ".\n" ;
             std::cout << "RESULT:\t";
-            PrintFunctions::printBinary(resultsArray[j][i][m]);
+            PrintFunctions::printBinary(resultsArray[m][i][j]);
             std::cout << "Right:\t";
-            PrintFunctions::printBinary(resultsArray[0][i][m]);
-
+            PrintFunctions::printBinary(resultsArray[0][i][j]);
+            
             fileCsv << "\nkList = ";
             for (int z = 0; z < kListCount; z++)
               fileCsv << kList[z] << ", ";
+            
           }
         }
     fileCsv << flag << ", ";
@@ -211,8 +206,7 @@ int compareMultiselectAlgorithms(uint size, uint * kList, uint kListCount, uint 
 
 
 template<typename T>
-void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, 
-               uint kDistribution) {
+void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, uint kDistribution) {
   uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
   uint size;
   uint i = 1;
