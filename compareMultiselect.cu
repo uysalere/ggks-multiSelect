@@ -107,6 +107,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     arrayOfGenerators[generateType](h_vec, size, generator);
 
     // print the vector
+    /*
     ofstream vectorFileCsv;
     uf bits;
     vectorFileCsv.open("vector3.csv", ios_base::app);
@@ -115,18 +116,19 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
       vectorFileCsv << "\'";
       bits.f= f;
       for(int i = 0; i < 32; i++){
-        /*
-        if(! (i % 4)){
-          vectorFileCsv << "|";
-        }
-        */
-        vectorFileCsv << ((bits.u >> (32 - 1 - i)) & 0x1);
+      /*
+      if(! (i % 4)){
+      vectorFileCsv << "|";
+      }
+    */
+    /*
+      vectorFileCsv << ((bits.u >> (32 - 1 - i)) & 0x1);
       }
       vectorFileCsv << "\'\n";
-    }
+      }
       
-    vectorFileCsv.close();
-
+      vectorFileCsv.close();
+    */
     //copy the vector to h_vec_copy, which will be used to restore it later
     memcpy(h_vec_copy, h_vec, size * sizeof(T));
 

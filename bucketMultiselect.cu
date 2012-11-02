@@ -157,7 +157,8 @@ namespace BucketMultiselect{
           ((num>=sharedPivots[16]) * 16);
         */
 
-        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+       
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
         //bucketCount[blockIdx.x * numBuckets + bucketIndex]++;
@@ -412,7 +413,8 @@ namespace BucketMultiselect{
     slopes[numPivots - 2] = numSmallBuckets / (double) (pivots[numPivots - 1] - pivots[numPivots - 2]);
   
     cudaFree(d_randoms);
-
+    
+    /*
     for (int i = 0; i < numPivots; i++) {
       printf ("bigBucket[%d] = %f\n", i, pivots[i]);
       PrintFunctions::printBinary (pivots[i]);
@@ -424,7 +426,7 @@ namespace BucketMultiselect{
         PrintFunctions::printBinary (f);
         printf("\n");
       }
-
+    */
   }
 
   // copyValuesInChunk<T>(output, d_output, newInput, d_kList, d_kIndices, kListCount);
@@ -560,11 +562,13 @@ namespace BucketMultiselect{
     //  cudaFree(d_kIndices); 
     //  cudaFree(d_kList); 
     
-    int kOffsetMax = kListCount - 1;
-    while (kList[kOffsetMax] == length) {
+    int kMaxIndex = kListCount - 1;
+    int kOffsetMax = 0;
+    while (kList[kMaxIndex] == length) {
       output[kIndices[kListCount-1]] = maximum;
       kListCount--;
-      kOffsetMax--;
+      kMaxIndex--;
+      kOffsetMax++;
     }
 
     int kOffsetMin = 0;
@@ -696,7 +700,7 @@ namespace BucketMultiselect{
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
 
 
-    printf("copiedVectorLength = %d\n", newInputLength);
+    // printf("copiedVectorLength = %d\n", newInputLength);
     /*
     for (register int i = 0; i < kListCount; i++) 
      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
