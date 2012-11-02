@@ -155,7 +155,8 @@ namespace BucketMultiselect{
           ((num>=sharedPivots[16]) * 16);
         */
 
-        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((num - sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
         //bucketCount[blockIdx.x * numBuckets + bucketIndex]++;
@@ -544,12 +545,14 @@ namespace BucketMultiselect{
 
     //  cudaFree(d_kIndices); 
     //  cudaFree(d_kList); 
-    
-    int kOffsetMax = kListCount - 1;
-    while (kList[kOffsetMax] == length) {
+
+    int kMaxIndex = kListCount - 1;
+    int kOffsetMax = 0;
+    while (kList[kMaxIndex] == length) {
       output[kIndices[kListCount-1]] = maximum;
       kListCount--;
-      kOffsetMax--;
+      kMaxIndex--;
+      kOffsetMax++;
     }
 
     int kOffsetMin = 0;
