@@ -141,7 +141,10 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
 
         //run timing function j
         printf("TESTING: %u\n", j);
+        kVals[71] = 65933979;
+        kVals[73] = 65933981;
         temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kListCount, &mainSeed);
+        printf ("%u, %u\n", kVals[71], kVals[73]);
         //record the time result
         timeArray[j][i] = temp->time;
         //record the value returned
@@ -273,9 +276,9 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 int main (int argc, char *argv[]) {
  
-  uint mainSeed = 1466518343; // THIS MUST BE FIXED TO GET ERROR
-  unsigned long long originalSeed = 386954181486218; // THIS MUST BE FIXED TO GET ERROR
-  unsigned long long seed = 1215214505056927; // THIS MUST BE FIXED TO GET ERROR
+  uint mainSeed = 2390577621; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long originalSeed = 385095184934058; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long seed = 621812329289790; // THIS MUST BE FIXED TO GET ERROR
   time_t generatorSeed = time(NULL);//1351465169; // THIS CAN BE RANDOM
   time_t srandSeed = time (NULL);//1351465069;  // this can also be random
 
