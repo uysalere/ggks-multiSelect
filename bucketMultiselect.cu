@@ -137,7 +137,8 @@ namespace BucketMultiselect{
             maxPivotIndex = midPivotIndex;
         }
 
-        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+        //bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+        bucketIndex = (int) (minPivotIndex * sharedNumSmallBuckets) + (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
        
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
@@ -382,23 +383,26 @@ namespace BucketMultiselect{
     // set the pivots which are endOffset away from the min and max pivots
     cudaMemcpy (pivots + 1, d_randoms + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
     cudaMemcpy (pivots + numPivots - 2, d_randoms + sizeOfSample - endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-    slopes[0] = (double) numSmallBuckets / ((double)pivots[1] - (double)pivots[0]);
+    slopes[0] = numSmallBuckets / ((double)pivots[1] - (double)pivots[0]);
 
     for (register int i = 2; i < numPivots - 2; i++) {
       cudaMemcpy (pivots + i, d_randoms + pivotOffset * (i - 1) + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[i - 1] = (double) numSmallBuckets / ((double) pivots[i] - (double) pivots[i - 1]);
+      slopes[i - 1] = numSmallBuckets / ((double) pivots[i] - (double) pivots[i - 1]);
     }
 
-    slopes[numPivots - 3] = (double) numSmallBuckets / ((double)pivots[numPivots - 2] - (double)pivots[numPivots - 3]);
-    slopes[numPivots - 2] = (double) numSmallBuckets / ((double)pivots[numPivots - 1] - (double)pivots[numPivots - 2]);
+    slopes[numPivots - 3] = numSmallBuckets / ((double)pivots[numPivots - 2] - (double)pivots[numPivots - 3]);
+    slopes[numPivots - 2] = numSmallBuckets / ((double)pivots[numPivots - 1] - (double)pivots[numPivots - 2]);
   
     cudaFree(d_randoms);
     
-    /*
+    
     for (int i = 0; i < numPivots; i++) {
       printf ("bigBucket[%d] = %f\n", i, pivots[i]);
       PrintFunctions::printBinary (pivots[i]);
+      PrintFunctions::printBinary ((float) slopes[i]);
     }
+
+    /*
     for (int i = 0; i < numPivots - 1; i++)
       for (int j = 0; j < numSmallBuckets; j++) {
         float f = pivots[i] + j / slopes[i];
@@ -406,9 +410,9 @@ namespace BucketMultiselect{
         PrintFunctions::printBinary (f);
         printf("\n");
       }
+  }
     */
   }
-
   // copyValuesInChunk<T>(output, d_output, newInput, d_kList, d_kIndices, kListCount);
   // for (register int i = 0; i < kListCount; i++) 
   //   CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
@@ -579,7 +583,10 @@ namespace BucketMultiselect{
     for (register int i = 0; i < numPivots - 1; i++)
       if (isinf(slopes[i]))
         slopes[i] = 0;
-
+    /*
+    for (register int i = 0; i < numPivots - 1; i++)
+      printf("pivot: %f slope: %f\n", pivots[i], slopes[i]);
+    */
     CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), cudaMemcpyHostToDevice));  
     CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), cudaMemcpyHostToDevice));
 
