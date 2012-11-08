@@ -276,9 +276,9 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 int main (int argc, char *argv[]) {
  
-  uint mainSeed = 2390577621; // THIS MUST BE FIXED TO GET ERROR
-  unsigned long long originalSeed = 385095184934058; // THIS MUST BE FIXED TO GET ERROR
-  unsigned long long seed = 621812329289790; // THIS MUST BE FIXED TO GET ERROR
+  uint randomSampleSeed = 2390577621; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long kDistributionSeed = 385095184934058; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long arraySeed = 621812329289790; // THIS MUST BE FIXED TO GET ERROR
   time_t generatorSeed = time(NULL);//1351465169; // THIS CAN BE RANDOM
   time_t srandSeed = time (NULL);//1351465069;  // this can also be random
 
@@ -333,13 +333,13 @@ int main (int argc, char *argv[]) {
 
   switch(type){
   case 0:
-    runTests<float>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK, srandSeed, originalSeed, mainSeed, generatorSeed, seed);
+    runTests<float>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK, srandSeed, kDistributionSeed, randomSampleSeed, generatorSeed, arraySeed);
     break;
   case 1:
-    runTests<double>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK, srandSeed, originalSeed, mainSeed, generatorSeed, seed);
+    runTests<double>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK, srandSeed, kDistributionSeed, randomSampleSeed, generatorSeed, arraySeed);
     break;
   case 2:
-    runTests<uint>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK, srandSeed, originalSeed, mainSeed, generatorSeed, seed);
+    runTests<uint>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK, srandSeed, kDistributionSeed, randomSampleSeed, generatorSeed, arraySeed);
     break;
   default:
     printf("You entered and invalid option, now exiting\n");
