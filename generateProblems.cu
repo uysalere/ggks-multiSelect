@@ -25,8 +25,9 @@ typedef void (*ptrToUintGeneratingFunction)(uint*, uint, curandGenerator_t);
 void generateUniformUnsignedIntegers(uint *h_vec, uint numElements, curandGenerator_t generator){
   uint * d_generated;
   cudaMalloc(&d_generated, numElements * sizeof(uint));
-  curandGenerate(generator, d_generated,numElements);
+  curandGenerate(generator, d_generated, numElements);
   cudaMemcpy(h_vec, d_generated, numElements * sizeof(uint), cudaMemcpyDeviceToHost);
+
   cudaFree(d_generated);
 }
 

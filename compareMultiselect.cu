@@ -141,8 +141,9 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
 
         //run timing function j
         printf("TESTING: %u\n", j);
-        kVals[71] = 65933979;
-        kVals[73] = 65933981;
+        //  printf ("kVals[72] = %u\n", kVals[72]);
+        //  kVals[71] = 65933979;
+        //  kVals[73] = 65933981;
         temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kListCount, &mainSeed);
         printf ("%u, %u\n", kVals[71], kVals[73]);
         //record the time result
@@ -275,12 +276,12 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 
 int main (int argc, char *argv[]) {
- 
-  uint randomSampleSeed = 2390577621; // THIS MUST BE FIXED TO GET ERROR
-  unsigned long long kDistributionSeed = 385095184934058; // THIS MUST BE FIXED TO GET ERROR
-  unsigned long long arraySeed = 621812329289790; // THIS MUST BE FIXED TO GET ERROR
+  //kDistributionSeed 385095184934058, generatorSeed 1351810014, srandSeed 1351808817, arraySeed 621812329289790, randomSampleSeed 2390577621
+  unsigned long long kDistributionSeed = 1236977662054212; // THIS MUST BE FIXED TO GET ERROR
   time_t generatorSeed = time(NULL);//1351465169; // THIS CAN BE RANDOM
   time_t srandSeed = time (NULL);//1351465069;  // this can also be random
+   unsigned long long arraySeed = 504145272240760; // THIS MUST BE FIXED TO GET ERROR
+  uint randomSampleSeed = 3515657061; // THIS MUST BE FIXED TO GET ERROR
 
   char *fileName;
   char *typeString;
