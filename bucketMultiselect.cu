@@ -115,7 +115,7 @@ namespace BucketMultiselect{
     }
     syncthreads();
 
-   //assigning elements to buckets and incrementing the bucket counts
+   	//assigning elements to buckets and incrementing the bucket counts
     if(index < length) {
       int i;
 
@@ -214,7 +214,7 @@ namespace BucketMultiselect{
     for (int i = 0; i <= loop; i++) {      
       threadIndex = i * blockDim.x + threadIdx.x;
       if(threadIndex < numBuckets) {
-        sharedBuckets[threadIndex]=buckets[threadIndex];
+        sharedBuckets[threadIndex] = buckets[threadIndex];
         sharedBucketCounts[threadIndex] = d_bucketCount[blockIdx.x * numTotalBuckets + sharedBuckets[threadIndex]];
       }
     }
@@ -376,15 +376,15 @@ namespace BucketMultiselect{
     // set the pivots which are endOffset away from the min and max pivots
     cudaMemcpy (pivots + 1, d_randoms + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
     cudaMemcpy (pivots + numPivots - 2, d_randoms + sizeOfSample - endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-    slopes[0] = numSmallBuckets / (double) (pivots[1] - pivots[0]);
+    slopes[0] = numSmallBuckets / ((double)pivots[1] - (double)pivots[0]);
 
     for (register int i = 2; i < numPivots - 2; i++) {
       cudaMemcpy (pivots + i, d_randoms + pivotOffset * (i - 1) + endOffset - 1, sizeof (T), cudaMemcpyDeviceToHost);
-      slopes[i - 1] = numSmallBuckets / (double) (pivots[i] - pivots[i - 1]);
+      slopes[i - 1] = numSmallBuckets / ((double) pivots[i] - (double) pivots[i - 1]);
     }
 
-    slopes[numPivots - 3] = numSmallBuckets / (double) (pivots[numPivots - 2] - pivots[numPivots - 3]);
-    slopes[numPivots - 2] = numSmallBuckets / (double) (pivots[numPivots - 1] - pivots[numPivots - 2]);
+    slopes[numPivots - 3] = numSmallBuckets / ((double)pivots[numPivots - 2] - (double)pivots[numPivots - 3]);
+    slopes[numPivots - 2] = numSmallBuckets / ((double)pivots[numPivots - 1] - (double)pivots[numPivots - 2]);
   
     cudaFree(d_randoms);
   }
@@ -513,7 +513,7 @@ namespace BucketMultiselect{
 
     //  cudaFree(d_kIndices); 
     //  cudaFree(d_kList); 
-    
+
     int kMaxIndex = kListCount - 1;
     int kOffsetMax = 0;
     while (kList[kMaxIndex] == length) {
@@ -651,7 +651,7 @@ namespace BucketMultiselect{
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
 
-    printf("copiedVectorLength = %d\n", newInputLength);
+    // printf("copiedVectorLength = %d\n", newInputLength);
     /*
     for (register int i = 0; i < kListCount; i++) 
      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
@@ -668,7 +668,7 @@ namespace BucketMultiselect{
     if (kListCount < threads)
       threads = kListCount;
     blocks = (int) ceil (kListCount / (float) threads);
-    printf("blocks = %d threads=%d kCount=%u\n", blocks, threads, kListCount + kOffsetMin + kOffsetMax);
+    // printf("blocks = %d threads=%d kCount=%u\n", blocks, threads, kListCount + kOffsetMin + kOffsetMax);
 
     copyValuesInChunk<T><<<blocks, threads>>>(d_output, newInput, d_kList, d_kIndices, kListCount);
 
@@ -682,7 +682,7 @@ namespace BucketMultiselect{
     /* done new strategy for copying k values back in a chunk */
 
     // timing(1, 10);
-    printf("finito\n");
+   // printf("finito\n");
 
     cudaFree(newInput); 
     free (kIndices - kOffsetMin);
