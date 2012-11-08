@@ -349,7 +349,6 @@ namespace BucketMultiselect{
     slopes[numPivots - 2] = numSmallBuckets / (double) (pivots[numPivots - 1] - pivots[numPivots - 2]);
 
     cudaFree(d_randomFloats);
-    cudaFree(d_randomInts);
   }
   
   template <typename T>
