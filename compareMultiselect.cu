@@ -49,12 +49,11 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
   uint i,j,m,x;
   int runOrder[NUMBEROFALGORITHMS];
 
-  unsigned long long seed;
+  unsigned long long seed[numTests];
   results_t<T> *temp;
   ofstream fileCsv;
   timeval t1;
- 
-  uint mainSeed;
+  uint mainSeed[numTests];
 
   typedef results_t<T>* (*ptrToTimingFunction)(T*, uint, uint *, uint, uint *);
   typedef void (*ptrToGeneratingFunction)(T*, uint, curandGenerator_t);
@@ -91,7 +90,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
   for(i = 0; i < numTests; i++) {
     // cudaDeviceReset();
     gettimeofday(&t1, NULL);
-    seed = t1.tv_usec * t1.tv_sec;
+    seed[i] = t1.tv_usec * t1.tv_sec;
     
     for(m = 0; m < NUMBEROFALGORITHMS;m++)
       runOrder[m] = m;
@@ -99,7 +98,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     std::random_shuffle(runOrder, runOrder + NUMBEROFALGORITHMS);
     //  fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ",";
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
-    curandSetPseudoRandomGeneratorSeed(generator,seed);
+    curandSetPseudoRandomGeneratorSeed(generator,seed[i]);
     printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests, size, kListCount);
     //generate the random vector using the specified distribution
     arrayOfGenerators[generateType](h_vec, size, generator);
@@ -110,13 +109,13 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     winnerArray[i] = 0;
     float currentWinningTime = INFINITY;
     //run the various timing functions
-    for(x = 0; x < NUMBEROFALGORITHMS; x++){
+    for(x = 0; x < NUMBEROFALGORITHMS; x++) {
       j = runOrder[x];
       if(algorithmsToTest[j]){
 
         //run timing function j
         printf("TESTING: %u\n", j);
-        temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kListCount, &mainSeed);
+        temp = arrayOfTimingFunctions[j](h_vec_copy, size, kVals, kListCount, &mainSeed[i]);
         //record the time result
         timeArray[j][i] = temp->time;
         //record the value returned
@@ -184,11 +183,11 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
             PrintFunctions::printBinary(resultsArray[j][i][m]);
             std::cout << "Right:\t";
             PrintFunctions::printBinary(resultsArray[0][i][m]);
-            std::cout << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed << ", mainSeed " << mainSeed << "\n";
+            std::cout << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", seed " << seed[i] << ", mainSeed " << mainSeed[i] << "\n";
 
             // print to file
             fileCsv << "\nERROR!!! on" << namesOfMultiselectTimingFunctions[j] << " did not return the correct answer on test " << i + 1 << " at k[" << m << "].  "; 
-            fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", kListCount = " << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", srandSeed " << srandSeed << ", seed " << seed << ", mainSeed " << mainSeed << "\n";
+            fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << ", kListCount = " << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ", originalSeed " << originalSeed << ", generatorSeed " << generatorSeed << ", srandSeed " << srandSeed << ", seed " << seed[i]  << ", mainSeed " << mainSeed[i] << "\n";
             
           }
 
