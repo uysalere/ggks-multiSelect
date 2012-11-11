@@ -236,8 +236,7 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
 
 
 template<typename T>
-void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, 
-               uint kDistribution, uint startK, uint stopK, uint kJump, time_t srandSeed, unsigned long long originalSeed, uint mainSeed, time_t generatorSeed, unsigned long long seed) {
+void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, uint kDistribution, uint startK, uint stopK, uint kJump, time_t srandSeed, unsigned long long originalSeed, uint mainSeed, time_t generatorSeed, unsigned long long seed) {
   uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 1};
   uint size;
   uint i;
@@ -277,11 +276,16 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 int main (int argc, char *argv[]) {
   //kDistributionSeed 385095184934058, generatorSeed 1351810014, srandSeed 1351808817, arraySeed 621812329289790, randomSampleSeed 2390577621
-  unsigned long long kDistributionSeed = 1236977662054212; // THIS MUST BE FIXED TO GET ERROR
-  time_t generatorSeed = time(NULL);//1351465169; // THIS CAN BE RANDOM
-  time_t srandSeed = time (NULL);//1351465069;  // this can also be random
-   unsigned long long arraySeed = 504145272240760; // THIS MUST BE FIXED TO GET ERROR
-  uint randomSampleSeed = 3515657061; // THIS MUST BE FIXED TO GET ERROR
+  // originalSeed = kDistributionSeed
+  unsigned long long kDistributionSeed = 190683819876387; // THIS MUST BE FIXED TO GET ERROR
+  time_t generatorSeed = time(NULL);
+  //time_t generatorSeed = time(NULL); //1351465169; // THIS CAN BE RANDOM
+  time_t srandSeed = time (NULL);
+  //time_t srandSeed = time (NULL);//1351465069;  // this can also be random
+  // seed = arraySeed
+  unsigned long long arraySeed = 1226075816856541; // THIS MUST BE FIXED TO GET ERROR
+  // randomSampleSeed = mainSeed
+  uint randomSampleSeed = 104051424; // THIS MUST BE FIXED TO GET ERROR
 
   char *fileName;
   char *typeString;
@@ -332,6 +336,7 @@ int main (int argc, char *argv[]) {
   printf("File Name: %s \n", fileName);
   //printf("Please enter filename now: ");
 
+  //void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, uint kDistribution, uint startK, uint stopK, uint kJump, time_t srandSeed, unsigned long long originalSeed, uint mainSeed, time_t generatorSeed, unsigned long long seed) {
   switch(type){
   case 0:
     runTests<float>(distributionType,fileName,startPower,stopPower,testCount,kDistribution,startK,stopK,jumpK, srandSeed, kDistributionSeed, randomSampleSeed, generatorSeed, arraySeed);
