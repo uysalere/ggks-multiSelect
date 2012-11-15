@@ -252,12 +252,18 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 
 int main (int argc, char *argv[]) {
-  char *fileName;
-  char *typeString;
+  char *fileName, *hostName, *typeString;
 
   uint testCount;
   fileName = (char*) malloc(128 * sizeof(char));
   typeString = (char*) malloc(10 * sizeof(char));
+  hostName = (char*) malloc(20 * sizeof(char));
+  gethostname(hostName, 20);
+
+  time_t rawtime;
+  struct tm * timeinfo;
+  time ( &rawtime );
+  timeinfo = localtime ( &rawtime );
 
   uint type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
   
@@ -296,8 +302,7 @@ int main (int argc, char *argv[]) {
     break;
   }
 
-
-  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d (%d:%d:%d) %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, startK, jumpK, stopK, testCount);
+  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d (%d:%d:%d) %d-tests on %s at %s", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, startK, jumpK, stopK, testCount, hostName, asctime(timeinfo));
   printf("File Name: %s \n", fileName);
   //printf("Please enter filename now: ");
 
