@@ -137,7 +137,8 @@ namespace BucketMultiselect{
             maxPivotIndex = midPivotIndex;
         }
 
-        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+        //bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
+        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((double)num * sharedSlopes[minPivotIndex]) - (int) ((double)sharedPivots[minPivotIndex] * sharedSlopes[minPivotIndex]) ;
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
         //bucketCount[blockIdx.x * numBuckets + bucketIndex]++;
@@ -326,7 +327,7 @@ namespace BucketMultiselect{
   
     d_randomInts = (uint *) d_randomFloats;
 
-    createRandomVector(d_randomFloats, sizeOfSample, mainSeed);
+    createRandomVector<float>(d_randomFloats, sizeOfSample, mainSeed);
 
     // converts randoms floats into elements from necessary indices
     enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randomFloats, d_randomInts, d_list, sizeOfVector);
@@ -364,7 +365,7 @@ namespace BucketMultiselect{
 
     cudaMalloc (&d_randoms, sizeof (T) * sizeOfSample);
   
-    createRandomVector(d_randoms, sizeOfSample, mainSeed);
+    createRandomVector<T>(d_randoms, sizeOfSample, mainSeed);
 
     // converts randoms floats into elements from necessary indices
     enlargeIndexAndGetElements<<<(sizeOfSample/MAX_THREADS_PER_BLOCK), MAX_THREADS_PER_BLOCK>>>(d_randoms, d_list, sizeOfVector);
@@ -396,7 +397,7 @@ namespace BucketMultiselect{
     for (int i = 0; i < numPivots; i++) {
       printf ("bigBucket[%d] = %f\n", i, pivots[i]);
       PrintFunctions::printBinary (pivots[i]);
-      PrintFunctions::printBinary ((float) slopes[i]);
+      PrintFunctions::printBinary (slopes[i]);
     }
 
     /*

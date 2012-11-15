@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sys/time.h>
 #include <iomanip>
+#include <unistd.h>
 
 #include <algorithm>
 //Include various thrust items that are used
@@ -207,6 +208,10 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
       for (m = 0; m < kListCount; m++)
         if(algorithmsToTest[j])
           if(resultsArray[j][i][m] != resultsArray[0][i][m]) {
+
+            std::cout << "wrong k:" << kVals[354] << ".\n";
+
+
             std::cout <<namesOfMultiselectTimingFunctions[j] <<" did not return the correct answer on test " << i + 1 << " at k[" << m << "].  It got "<< resultsArray[j][i][m];
             std::cout << " instead of " << resultsArray[0][i][m] << ".\n" ;
             std::cout << "RESULT:\t";
@@ -277,22 +282,28 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 int main (int argc, char *argv[]) {
   //kDistributionSeed 385095184934058, generatorSeed 1351810014, srandSeed 1351808817, arraySeed 621812329289790, randomSampleSeed 2390577621
   // originalSeed = kDistributionSeed
-  unsigned long long kDistributionSeed = 190683819876387; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long kDistributionSeed = 87802604328220; // THIS MUST BE FIXED TO GET ERROR
   time_t generatorSeed = time(NULL);
   //time_t generatorSeed = time(NULL); //1351465169; // THIS CAN BE RANDOM
   time_t srandSeed = time (NULL);
   //time_t srandSeed = time (NULL);//1351465069;  // this can also be random
   // seed = arraySeed
-  unsigned long long arraySeed = 1226075816856541; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long arraySeed = 1313572239387928; // THIS MUST BE FIXED TO GET ERROR
   // randomSampleSeed = mainSeed
-  uint randomSampleSeed = 104051424; // THIS MUST BE FIXED TO GET ERROR
+  uint randomSampleSeed = 453328713; // THIS MUST BE FIXED TO GET ERROR
 
-  char *fileName;
-  char *typeString;
+  char *fileName, *hostName, *typeString;
 
   uint testCount;
   fileName = (char*) malloc(128 * sizeof(char));
   typeString = (char*) malloc(10 * sizeof(char));
+  hostName = (char*) malloc(20 * sizeof(char));
+  gethostname(hostName, 20);
+
+  time_t rawtime;
+  struct tm * timeinfo;
+  time ( &rawtime );
+  timeinfo = localtime ( &rawtime );
 
   uint type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
   
@@ -332,7 +343,7 @@ int main (int argc, char *argv[]) {
   }
 
 
-  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d (%d:%d:%d) %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, startK, jumpK, stopK, testCount);
+  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d (%d:%d:%d) %d-tests on %s at %s", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, startK, jumpK, stopK, testCount, hostName, asctime(timeinfo));
   printf("File Name: %s \n", fileName);
   //printf("Please enter filename now: ");
 

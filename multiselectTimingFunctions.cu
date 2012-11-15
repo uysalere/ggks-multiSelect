@@ -65,6 +65,16 @@ results_t<T>* timeSortAndChooseMultiselect(T *h_vec, uint numElements, uint * kV
     cudaMemcpy(result->vals + i, d_vec + (numElements - kVals[i]), sizeof (T), cudaMemcpyDeviceToHost);
   */
 
+  int mm=numElements-33381246;
+  T h_vec_print[21];
+  cudaMemcpy (h_vec_print, d_vec+mm-10, 21* sizeof (T), cudaMemcpyDeviceToHost);
+
+  for (int i = 0; i < 21; i++) {
+    printf("%f \n", h_vec_print[i]);
+    PrintFunctions::printBinary(h_vec_print[i]);
+  }
+
+    
   T * d_output;
   uint * d_kList;
 
