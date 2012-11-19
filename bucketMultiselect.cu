@@ -93,9 +93,9 @@ namespace BucketMultiselect{
       sharedNumSmallBuckets = numBuckets / (numPivots-1);
     
     extern __shared__ uint array[];
-    uint * sharedBuckets = (uint *)array;
-    double * sharedSlopes = (double *)&sharedBuckets[numBuckets];
+    double * sharedSlopes = (double *)array;
     T * sharedPivots = (T *)&sharedSlopes[numPivots-1];
+    uint * sharedBuckets = (uint *)&sharedPivots[numPivots];
     /*
     uint * sharedBuckets = (uint *)array;
     double * sharedSlopes = (double *)&sharedBuckets[numBuckets];
@@ -113,7 +113,7 @@ namespace BucketMultiselect{
     if(threadIndex < numPivots) {
       *(sharedPivots + threadIndex) = *(pivots + threadIndex);
       if(threadIndex < numPivots-1) 
-        sharedSlopes[threadIndex] = slopes[threadIndex];
+        *(sharedSlopes + threadIndex) = *(slopes + threadIndex);
     }
     syncthreads();
 
@@ -129,7 +129,7 @@ namespace BucketMultiselect{
 
         // find the index of the pivot that is the greatest s.t. lower than or equal to num using binary search
         //while (maxPivotIndex > minPivotIndex+1) {
-        for(int j = 1; j < numPivots - 1; j*=2) {
+        for (int j = 1; j < numPivots - 1; j*=2) {
           midPivotIndex = (maxPivotIndex + minPivotIndex) / 2;
           if (num >= sharedPivots[midPivotIndex])
             minPivotIndex = midPivotIndex;
@@ -138,11 +138,30 @@ namespace BucketMultiselect{
         }
 
         //bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
-        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((double)num * sharedSlopes[minPivotIndex]) - (int) ((double)sharedPivots[minPivotIndex] * sharedSlopes[minPivotIndex]) ;
+        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
         //bucketCount[blockIdx.x * numBuckets + bucketIndex]++;
+        /*
+        if (threadIndex < numBuckets) 
+          printf("num: %f bucket: %u count: %u \n", num, bucketIndex, atomicInc(sharedBuckets + bucketIndex, length));
+        */
         atomicInc (sharedBuckets + bucketIndex, length);
+
+        /*
+        if ( (i==18152657) || (i==32737839) || (i==64290939) ) {
+          printf("k[%d]: %f minPivotIndex: %d bucketIndex: %d sharedPivots[minPivotIndex]: %f sharedSlopes[minPivotIndex]:%lf\n", i, num, minPivotIndex, bucketIndex, sharedPivots[minPivotIndex], sharedSlopes[minPivotIndex]);
+         
+          unsigned long long bits = (unsigned long long ) sharedSlopes[minPivotIndex];
+          for(int i = 0; i < 64; i++){
+            if(! (i % 4)){
+              printf("|");
+            }
+            printf("%u",(bits >> (64 - 1 - i)) & 0x1);
+          }
+          printf("\n");
+        }
+        */
       }
     }
     
@@ -159,10 +178,6 @@ namespace BucketMultiselect{
   //this function finds the bin containing the kth element we are looking for (works on the host)
   inline int findKBuckets(uint * d_bucketCount, uint * h_bucketCount, int numBuckets, uint * kVals, int kCount, uint * sums, uint * kthBuckets, int numBlocks){
     int sumsRowIndex= numBuckets * (numBlocks-1);
-    /*
-      for(int j=0; j<numBuckets; j++)
-      CUDA_CALL(cudaMemcpy(h_bucketCount + j, d_bucketCount + sumsRowIndex + j, sizeof(uint), cudaMemcpyDeviceToHost));
-    */
     CUDA_CALL(cudaMemcpy(h_bucketCount, d_bucketCount + sumsRowIndex, sizeof(uint) * numBuckets, cudaMemcpyDeviceToHost));
 
     int kBucket = 0;
@@ -177,6 +192,9 @@ namespace BucketMultiselect{
       }
       kthBuckets[i] = kBucket;
       sums[i] = sum - h_bucketCount[kBucket];
+      printf("****************************\n");
+      printf("bucketcount[%d]: %u\n", kBucket, h_bucketCount[kBucket]);
+      printf("****************************\n");
     }
 
     return 0;
@@ -195,10 +213,10 @@ namespace BucketMultiselect{
 
     if(threadIndex<numUniqueBuckets) {
       int index = d_markedBuckets[threadIndex];
-      int add = d_reindexCounter[threadIndex];
+      uint add = d_reindexCounter[threadIndex];
 
       for(int j=0; j<numBlocks; j++) 
-        d_bucketCount[index + numBuckets*j] += (uint) add;
+        d_bucketCount[index + numBuckets*j] += add;
     }
   }
 
@@ -212,7 +230,7 @@ namespace BucketMultiselect{
 
     extern __shared__ uint array[];
     uint * sharedBucketCounts= (uint*)array;
-    uint * sharedBuckets= (uint*)&array[numBuckets];
+    uint * sharedBuckets= (uint*)&sharedBucketCounts[numBuckets];
 
     for (int i = 0; i <= loop; i++) {      
       threadIndex = i * blockDim.x + threadIdx.x;
@@ -222,7 +240,7 @@ namespace BucketMultiselect{
       }
     }
     
-    syncthreads();
+   syncthreads();
 
     int minBucketIndex;
     int maxBucketIndex; 
@@ -397,6 +415,7 @@ namespace BucketMultiselect{
     for (int i = 0; i < numPivots; i++) {
       printf ("bigBucket[%d] = %f\n", i, pivots[i]);
       PrintFunctions::printBinary (pivots[i]);
+      printf ("bigBucketSlopes[%d] = %lf\n", i, slopes[i]);
       PrintFunctions::printBinary (slopes[i]);
     }
 
@@ -596,9 +615,26 @@ namespace BucketMultiselect{
     // timing(0, 5);
 
     //Distribute elements into their respective buckets
-    assignSmartBucket<T><<<numBlocks, threadsPerBlock,  numPivots * sizeof(T) + (numPivots-1) * sizeof(double) + numBuckets * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
+    assignSmartBucket<T><<<numBlocks, threadsPerBlock,  numPivots * sizeof(T) + (numPivots-1) * sizeof(double) + (numBuckets+1) * sizeof(uint)>>>(d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, d_elementToBucket, d_bucketCount, offset);
     // timing(1, 5);
     // timing(0, 21);
+
+    printf("****************************\n");
+    T ele;
+    uint loc;
+    CUDA_CALL(cudaMemcpy(&ele, &d_vector[18152657], sizeof (T), cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(&loc, &d_elementToBucket[18152657], sizeof(uint), cudaMemcpyDeviceToHost));
+    printf("k[18152657] = %f loc: %u \n", ele, loc);
+    PrintFunctions::printBinary (ele);
+    CUDA_CALL(cudaMemcpy(&ele, &d_vector[32737839], sizeof (T), cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(&loc, &d_elementToBucket[32737839], sizeof(uint), cudaMemcpyDeviceToHost));
+    printf("k[32737839] = %f loc: %u \n", ele, loc);
+    PrintFunctions::printBinary (ele);
+    CUDA_CALL(cudaMemcpy(&ele, &d_vector[64290939], sizeof (T), cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(&loc, &d_elementToBucket[64290939], sizeof(uint), cudaMemcpyDeviceToHost));
+    printf("k[64290939] = %f loc: %u \n", ele, loc);
+    PrintFunctions::printBinary (ele);
+    printf("****************************\n");
 
     sumCounts<<<numBuckets/threadsPerBlock, threadsPerBlock>>>(d_bucketCount, numBuckets, numBlocks);
 
@@ -610,6 +646,12 @@ namespace BucketMultiselect{
     // timing(0, 6);
 
     findKBuckets(d_bucketCount, h_bucketCount, numBuckets, kList, kListCount, kthBucketScanner, kthBuckets, numBlocks);
+
+    printf("****************************\n");
+    for (int i=0; i < kListCount; i++) {
+      printf("k[%d] = %u \n", i, kList[i]);
+    }
+    printf("****************************\n");
 
     // timing(1, 6);
     // timing(0, 7);
@@ -669,6 +711,12 @@ namespace BucketMultiselect{
     /// ****STEP 8: Sort
     /// and finito
     /// ***********************************************************
+    
+    printf("****************************\n");
+    for (int i=0; i < kListCount; i++) {
+      printf("k[%d] = %u \n", i, kList[i]);
+    }
+    printf("****************************\n");
 
     //free all used memory
     cudaFree(d_pivots);
@@ -679,13 +727,40 @@ namespace BucketMultiselect{
     cudaFree(d_uniqueBuckets); 
     cudaFree(d_reindexCounter);  
 
+    printf("****************************\n");
+     T el;
+     int offs = newInputLength-1;
+     for (int i=0; i < offs; i++) {
+       CUDA_CALL(cudaMemcpy(&el, newInput+i, sizeof (T), cudaMemcpyDeviceToHost));
+       printf("nonsorted[%d] = %f \n", i, el);
+       PrintFunctions::printBinary (el);
+     }
+    printf("****************************\n");
+
     // timing(0, 10);
     // sort the vector
     thrust::device_ptr<T>newInput_ptr(newInput);
     thrust::sort(newInput_ptr, newInput_ptr + newInputLength);
 
 
-    // printf("copiedVectorLength = %d\n", newInputLength);
+    printf("****************************\n");
+    printf("copiedVectorLength = %d\n", newInputLength);
+
+     for (int i=0; i < offs; i++) {
+       CUDA_CALL(cudaMemcpy(&el, newInput+i, sizeof (T), cudaMemcpyDeviceToHost));
+       printf("sorted[%d] = %f \n", i, el);
+       PrintFunctions::printBinary (el);
+     }
+     /*
+     for (int i=0; i < offs; i++) {
+     CUDA_CALL(cudaMemcpy(&el, newInput + newInputLength -1-i, sizeof (T), cudaMemcpyDeviceToHost));
+     printf("sorted[%d] = %f \n", newInputLength -1-i, el);
+     PrintFunctions::printBinary (el);
+     }
+     */
+    printf("****************************\n");
+
+     // printf("copiedVectorLength = %d\n", newInputLength);
     /*
     for (register int i = 0; i < kListCount; i++) 
      CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
@@ -727,6 +802,23 @@ namespace BucketMultiselect{
 
   template <typename T>
   T bucketMultiselectWrapper (T * d_vector, int length, uint * kList_ori, int kListCount, T * outputs, int blocks, int threads, uint * mainSeed) { 
+
+    /*
+    T * h_vector = (T *) malloc(sizeof(T) * length);
+    
+    CUDA_CALL(cudaMemcpy(h_vector, d_vector, length * sizeof (T), cudaMemcpyDeviceToHost));
+    printf("****************************\n");
+    T el;
+     for (int i=0; i < length; i++) {
+       el = h_vector[i];       
+       if ( (el > -2.687) && (el < -2.686) ) {
+         printf("original[%d] = %f \n", i, h_vector[i]);
+         PrintFunctions::printBinary(h_vector[i]);
+       }
+     }
+    printf("****************************\n");
+    free(h_vector);
+    */
 
     int numBuckets = 8192;
     uint kList[kListCount];

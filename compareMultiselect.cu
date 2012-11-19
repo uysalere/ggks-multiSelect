@@ -54,7 +54,10 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
   uint timesWon[NUMBEROFALGORITHMS];
   uint i,j,m,x;
   int runOrder[NUMBEROFALGORITHMS];
-
+  /*
+  int offset= 0;
+  int offlen= 2*offset+1;
+  */
   results_t<T> *temp;
   ofstream fileCsv;
   //timeval t1;
@@ -81,6 +84,11 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
   bzero(timesWon, NUMBEROFALGORITHMS * sizeof(uint));
 
   //allocate space for h_vec, and h_vec_copy
+/*
+  long_vec = (T *) malloc(size * sizeof(T));
+  h_vec = (T *) malloc(offlen * sizeof(T));
+  h_vec_copy = (T *) malloc(offlen * sizeof(T));
+*/
   h_vec = (T *) malloc(size * sizeof(T));
   h_vec_copy = (T *) malloc(size * sizeof(T));
 
@@ -246,8 +254,15 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
   uint size;
   uint i;
   uint arrayOfKs[stopK+1];
-  
-  
+
+  int offset= 0;
+  int offlen= 2*offset+1;
+  uint errayOfKs[offlen];
+
+  for (int j=0; j<offlen; j++) {
+  errayOfKs[j] = 66867036-offset+j;
+  }
+
   for (size = (1 << startPower); size <= (1 << stopPower); size *= 2) {
 
     // timeval t1;
@@ -273,7 +288,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
       cudaDeviceReset();
       cudaThreadExit();
       printf("NOW ADDING ANOTHER K\n\n");
-      compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, srandSeed, originalSeed, mainSeed, generatorSeed, seed );
+      compareMultiselectAlgorithms<T>(size, errayOfKs, offlen, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, srandSeed, originalSeed, mainSeed, generatorSeed, seed );
     }
   }
 }
@@ -282,15 +297,15 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 int main (int argc, char *argv[]) {
   //kDistributionSeed 385095184934058, generatorSeed 1351810014, srandSeed 1351808817, arraySeed 621812329289790, randomSampleSeed 2390577621
   // originalSeed = kDistributionSeed
-  unsigned long long kDistributionSeed = 87802604328220; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long kDistributionSeed = 533093496381926; // THIS MUST BE FIXED TO GET ERROR
   time_t generatorSeed = time(NULL);
   //time_t generatorSeed = time(NULL); //1351465169; // THIS CAN BE RANDOM
   time_t srandSeed = time (NULL);
   //time_t srandSeed = time (NULL);//1351465069;  // this can also be random
   // seed = arraySeed
-  unsigned long long arraySeed = 1313572239387928; // THIS MUST BE FIXED TO GET ERROR
+  unsigned long long arraySeed = 1131611478360000; // THIS MUST BE FIXED TO GET ERROR
   // randomSampleSeed = mainSeed
-  uint randomSampleSeed = 453328713; // THIS MUST BE FIXED TO GET ERROR
+  uint randomSampleSeed = 2090196280; // THIS MUST BE FIXED TO GET ERROR
 
   char *fileName, *hostName, *typeString;
 
