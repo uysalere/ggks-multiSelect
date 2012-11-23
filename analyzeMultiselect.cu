@@ -242,6 +242,9 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
       arrayOfKDistributionGenerators[kDistribution](arrayOfKs, i, size, generator);
     }
 
+    if(i<2)
+      return;
+
     int b = i;     
     int c = (a+b)/2;
     //printf("\n********a = %d**b = %d**c = %d**********\n", a, b, c);
@@ -260,7 +263,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     arrayOfKDistributionGenerators[kDistribution](arrayOfKs, (a+b)/2, size, generator);
     compareMultiselectAlgorithms<T>(size, arrayOfKs, (a+b)/2, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 1);
 
-    printf ("\n\n\n\n **************** NUM K VALUES FOR SIZE = 2^%d is kListCount = %u ********************\n\n\n\n", (int) log2((float)size), (a+b)/2);
+    printf ("\n**************** NUM K VALUES FOR SIZE = 2^%d is kListCount = %u ********************\n", (int) log2((float)size), (a+b)/2);
     i = ((a+b)/2) * .9;
     curandDestroyGenerator(generator);
     
