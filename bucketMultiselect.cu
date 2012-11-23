@@ -136,7 +136,7 @@ namespace BucketMultiselect{
         }
 
         //bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
-        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) ((double)num * sharedSlopes[minPivotIndex]) - (int) ((double)sharedPivots[minPivotIndex] * sharedSlopes[minPivotIndex]) ;
+        bucketIndex = (minPivotIndex * sharedNumSmallBuckets) + (int) (((double)num - (double)sharedPivots[minPivotIndex]) * sharedSlopes[minPivotIndex]);
 
         elementToBucket[i] = bucketIndex;
         // hashmap implementation set[bucketindex]=add.i;
