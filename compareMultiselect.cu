@@ -98,7 +98,8 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
       runOrder[m] = m;
     
     std::random_shuffle(runOrder, runOrder + NUMBEROFALGORITHMS);
-    fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
+    //fileCsv << size << "," << kVals[0] << "," << kVals[kListCount - 1] << "," << kListCount << "," << (100*((float)kListCount/size)) << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << "," << seed << ",";
+    fileCsv << size << "," << kListCount << "," << namesOfGeneratingFunctions[generateType] << "," << namesOfKGenerators[kGenerateType] << ",";
     curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
     curandSetPseudoRandomGeneratorSeed(generator,seed);
     printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests, size, kListCount);
@@ -264,6 +265,8 @@ int main (int argc, char *argv[]) {
   struct tm * timeinfo;
   time ( &rawtime );
   timeinfo = localtime ( &rawtime );
+  char * humanTime = asctime(timeinfo);
+  humanTime[strlen(humanTime)-1] = '\0';
 
   uint type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
   
@@ -302,7 +305,7 @@ int main (int argc, char *argv[]) {
     break;
   }
 
-  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d (%d:%d:%d) %d-tests on %s at %s", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, startK, jumpK, stopK, testCount, hostName, asctime(timeinfo));
+  snprintf(fileName, 128, "%s %s k-dist:%s 2^%d to 2^%d (%d:%d:%d) %d-tests on %s at %s", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, startK, jumpK, stopK, testCount, hostName, humanTime);
   printf("File Name: %s \n", fileName);
   //printf("Please enter filename now: ");
 

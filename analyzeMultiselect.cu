@@ -209,7 +209,7 @@ template<typename T>
 void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, uint kDistribution) {
   uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
   uint size;
-  uint i = 1;
+  uint i = 10;
 
   
   for(size = (1 << startPower); size <= (1 << stopPower); size *= 2) {
@@ -243,7 +243,7 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
     }
 
     if(i<2)
-      return;
+      continue;
 
     int b = i;     
     int c = (a+b)/2;
@@ -272,13 +272,21 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
 
 int main (int argc, char *argv[]) {
-  char *fileName;
-  char *typeString;
-
-  fileName = (char*) malloc(128 * sizeof(char));
-  typeString = (char*) malloc(10 * sizeof(char));
+  char *fileName, *hostName, *typeString;
 
   uint testCount;
+  fileName = (char*) malloc(128 * sizeof(char));
+  typeString = (char*) malloc(10 * sizeof(char));
+  hostName = (char*) malloc(20 * sizeof(char));
+  gethostname(hostName, 20);
+
+  time_t rawtime;
+  struct tm * timeinfo;
+  time ( &rawtime );
+  timeinfo = localtime ( &rawtime );
+  char * humanTime = asctime(timeinfo);
+  humanTime[strlen(humanTime)-1] = '\0';
+
   uint type,distributionType,startPower,stopPower,kDistribution;
   
   printf("Please enter the type of value you want to test:\n0-float\n1-double\n2-uint\n");
@@ -310,7 +318,7 @@ int main (int argc, char *argv[]) {
     break;
   }
 
-  snprintf(fileName, 128, "CR %s %s k-dist:%s 2^%d to 2^%d %d-tests", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount);
+  snprintf(fileName, 128, "CR %s %s k-dist:%s 2^%d to 2^%d %d-tests on %s at %s", typeString, getDistributionOptions(type, distributionType), getKDistributionOptions(kDistribution), startPower, stopPower, testCount, hostName, humanTime);
   // snprintf(fileName, 128, "CR type:%u dist:%u k-dist:%u", type, distributionType, kDistribution);
   printf("File Name: %s \n", fileName);
 
