@@ -233,17 +233,20 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 
     while (compareMultiselectAlgorithms<T>(size, arrayOfKs, i, timesToTestEachK, algorithmsToRun, generateType, kDistribution, fileName, 0)) {
       a=i;
-      if(i<10000)
+      if(i<5000)
         i*=2;   
-      else if(i<100000)
+      else if(i<10000)
         i*=1.5;   
       else 
         i*=1.2;   
       arrayOfKDistributionGenerators[kDistribution](arrayOfKs, i, size, generator);
     }
 
-    if(i<2)
+    if(i==1) {
+      printf ("\n**************** NUM K VALUES FOR SIZE = 2^%d is kListCount = %u ********************\n", (int) log2((float)size), i);
+    curandDestroyGenerator(generator);
       continue;
+    }
 
     int b = i;     
     int c = (a+b)/2;

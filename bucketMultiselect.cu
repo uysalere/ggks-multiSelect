@@ -701,8 +701,9 @@ namespace BucketMultiselect{
     // turn it into kth smallest
     for (register int i = 0; i < kListCount; i++) 
       kList[i] = length - kList_ori[i] + 1;
-   
+    
     // optimize numBuckets based on experimentation
+    /*
     if (length <= 524288)
       numBuckets = 4096;
     else if (length <= 1048576 && kListCount <= 188)
@@ -719,7 +720,7 @@ namespace BucketMultiselect{
       numBuckets = 4096;
     else if (length <= 67108864 && kListCount <= 4)
       numBuckets = 4096;
-
+    */
    
     phaseOne (d_vector, length, kList, kListCount, outputs, blocks, threads, numBuckets, 17);
 
