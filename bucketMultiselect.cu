@@ -720,9 +720,7 @@ namespace BucketMultiselect{
 
     //free all used memory
     cudaFree(d_pivots);
-    cudaFree(d_slopes); 
-
-    cudaFree(d_elementToBucket);  
+    cudaFree(d_slopes);  
     cudaFree(d_bucketCount); 
     cudaFree(d_uniqueBuckets); 
     cudaFree(d_reindexCounter);  
@@ -769,8 +767,8 @@ namespace BucketMultiselect{
     
   
     
-    T * d_output;
-    CUDA_CALL(cudaMalloc (&d_output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T)));
+    T * d_output = (T *) d_elementToBucket;
+    //CUDA_CALL(cudaMalloc (&d_output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T)));
     CUDA_CALL(cudaMemcpy (d_output, output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy (d_kList, kList, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy (d_kIndices, kIndices, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
@@ -786,7 +784,8 @@ namespace BucketMultiselect{
 
     CUDA_CALL(cudaMemcpy (output, d_output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T), cudaMemcpyDeviceToHost));
 
-    cudaFree(d_output);
+
+    cudaFree(d_elementToBucket); 
     cudaFree(d_kIndices); 
     cudaFree(d_kList); 
     
