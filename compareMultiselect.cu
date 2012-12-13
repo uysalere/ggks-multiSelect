@@ -37,9 +37,10 @@
 char* namesOfMultiselectTimingFunctions[NUMBEROFALGORITHMS] = {"Sort and Choose Multiselect", "Bucket Multiselect", "Naive Bucket Multiselect"};
 
 
+namespace CompareMultiselect{
 using namespace std;
 template<typename T>
-void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv) {
+void compareMultiselectAlgorithms(uint size, uint* kVals, uint kListCount, uint numTests, uint *algorithmsToTest, uint generateType, uint kGenerateType, char* fileNamecsv, T* data = NULL) {
   T *h_vec, *h_vec_copy;
   float timeArray[NUMBEROFALGORITHMS][numTests];
   T * resultsArray[NUMBEROFALGORITHMS][numTests];
@@ -104,7 +105,10 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
     curandSetPseudoRandomGeneratorSeed(generator,seed);
     printf("Running test %u of %u for size: %u and numK: %u\n", i + 1, numTests, size, kListCount);
     //generate the random vector using the specified distribution
-    arrayOfGenerators[generateType](h_vec, size, generator);
+    if(data == NULL) 
+      arrayOfGenerators[generateType](h_vec, size, generator);
+    else
+      h_vec = data;
 
     //copy the vector to h_vec_copy, which will be used to restore it later
     memcpy(h_vec_copy, h_vec, size * sizeof(T));
@@ -193,16 +197,15 @@ void compareMultiselectAlgorithms(uint size, uint * kVals, uint kListCount, uint
         free(resultsArray[m][i]);
 
   //free h_vec and h_vec_copy
-  free(h_vec);
+  if(data == NULL) 
+    free(h_vec);
   free(h_vec_copy);
   //close the file
   fileCsv.close();
 }
 
-
 template<typename T>
-void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, 
-               uint kDistribution, uint startK, uint stopK, uint kJump) {
+void runTests (uint generateType, char* fileName, uint startPower, uint stopPower, uint timesToTestEachK, uint kDistribution, uint startK, uint stopK, uint kJump) {
   uint algorithmsToRun[NUMBEROFALGORITHMS]= {1, 1, 0};
   uint size;
   uint i;
@@ -255,7 +258,6 @@ void runTests (uint generateType, char* fileName, uint startPower, uint stopPowe
 int main (int argc, char *argv[]) {
   char *fileName, *hostName, *typeString;
 
-  uint testCount;
   fileName = (char*) malloc(128 * sizeof(char));
   typeString = (char*) malloc(10 * sizeof(char));
   hostName = (char*) malloc(20 * sizeof(char));
@@ -268,7 +270,7 @@ int main (int argc, char *argv[]) {
   char * humanTime = asctime(timeinfo);
   humanTime[strlen(humanTime)-1] = '\0';
 
-  uint type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
+  uint testCount, type,distributionType,startPower,stopPower,kDistribution,startK,stopK,jumpK;
   
   printf("Please enter the type of value you want to test:\n0-float\n1-double\n2-uint\n");
   scanf("%u", &type);
@@ -326,4 +328,5 @@ int main (int argc, char *argv[]) {
 
   free (fileName);
   return 0;
+}
 }

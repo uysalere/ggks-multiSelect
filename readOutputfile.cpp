@@ -83,7 +83,7 @@ void getFileInfo(char * fileName, uint &numFields, uint &numLines){
     fields++;
   }
   while(fgets(firstLine,2000,fp) != NULL){
-    lines++;
+    ptr = strtok(NULL,",");
   }
   numFields = fields;
   numLines = lines;

@@ -394,11 +394,14 @@ namespace BucketMultiselect{
   // merge the results in a device array
   template <typename T>
   __global__ void copyValuesInChunk (T * outputVector, T * inputVector, uint * kList, uint * kIndices, int kListCount) {
-   
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < kListCount)
-      *(outputVector + *(kIndices + idx)) = *(inputVector + *(kList + idx) - 1);
-    // CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
+    int loop = kListCount / MAX_THREADS_PER_BLOCK;
+
+    for (int i = 0; i <= loop; i++) {      
+      if (idx < kListCount)
+        *(outputVector + *(kIndices + idx)) = *(inputVector + *(kList + idx) - 1);
+    }
+      // CUDA_CALL(cudaMemcpy(output + kIndices[i], newInput + kList[i] - 1, sizeof (T), cudaMemcpyDeviceToHost));
 
   }
 
@@ -663,14 +666,15 @@ namespace BucketMultiselect{
     CUDA_CALL(cudaMemcpy (d_output, output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy (d_kList, kList, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy (d_kIndices, kIndices, kListCount * sizeof (uint), cudaMemcpyHostToDevice));
-
-    threads = MAX_THREADS_PER_BLOCK;
+    /*
+    threads = threadsPerBlock;
     if (kListCount < threads)
       threads = kListCount;
     blocks = (int) ceil (kListCount / (float) threads);
+    */
     // printf("blocks = %d threads=%d kCount=%u\n", blocks, threads, kListCount + kOffsetMin + kOffsetMax);
 
-    copyValuesInChunk<T><<<blocks, threads>>>(d_output, newInput, d_kList, d_kIndices, kListCount);
+    copyValuesInChunk<T><<<numBlocks, threadsPerBlock>>>(d_output, newInput, d_kList, d_kIndices, kListCount);
 
     CUDA_CALL(cudaMemcpy (output, d_output, (kListCount + kOffsetMin + kOffsetMax) * sizeof (T), cudaMemcpyDeviceToHost));
 
