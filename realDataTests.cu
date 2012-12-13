@@ -30,6 +30,13 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  printf("Your data looks like this: \n");
+  char colsCall[BUF]= "head -n 2 ";
+  system(strcat(colsCall, filename));
+  printf("Please enter the (0-based) index of the column to read the values from: ");
+  int column;
+  scanf("%u", &column);
+
   FILE *io;
   char sizeData[20];
   int size;
@@ -48,7 +55,8 @@ int main(int argc, char** argv) {
 
   while (fgets(line, BUF, file) != NULL) {
     ptr =strtok(line, ",");
-    ptr =strtok(NULL, ",");
+    for(int j=0; j<column; j++)
+      ptr =strtok(NULL, ",");
     sscanf(ptr, "%f", &data[count]);
     count++;
   }
