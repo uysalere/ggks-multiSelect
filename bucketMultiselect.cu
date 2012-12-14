@@ -183,20 +183,31 @@ namespace BucketMultiselect{
         bucketIndex = (minPivotIndex * sharedNumSmallBuckets) 
           + (int) (((double)num - (double)sharedPivots[minPivotIndex]) 
                    * sharedSlopes[minPivotIndex]);
-
-        d_elementToBucket[i] = bucketIndex;
-        atomicInc(sharedBuckets + bucketIndex, length);
+        
+        if (bucketIndex< numBuckets) {
+          d_elementToBucket[i] = bucketIndex;
+          atomicInc(sharedBuckets + bucketIndex, length);
+        }
+        else {
+          d_elementToBucket[i] = numBuckets-1;
+          atomicInc(sharedBuckets + numBuckets-1, length);
+        }
       }
     }
     
-    syncthreads();
+    /*
+    if (threadIndex < 1) 
+      *(sharedBuckets + numBuckets -1) += *(sharedBuckets + numBuckets);
+      */
+    syncthreads();        
 
     //reading bucket counts from shared memory back to global memory
-    for (int i = 0; i < (numBuckets / MAX_THREADS_PER_BLOCK); i++) 
+    for (int i = 0; i <(numBuckets / MAX_THREADS_PER_BLOCK); i++)
       if (threadIndex < numBuckets) 
         *(d_bucketCount + blockIdx.x * numBuckets 
           + i * MAX_THREADS_PER_BLOCK + threadIndex) = 
           *(sharedBuckets + i * MAX_THREADS_PER_BLOCK + threadIndex);
+        
   }
 
 

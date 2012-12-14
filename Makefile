@@ -37,7 +37,7 @@ compareMultiselect: compareMultiselect.cu bucketMultiselect.cu naiveBucketMultis
 analyzeMultiselect: analyzeMultiselect.cu bucketMultiselect.cu multiselectTimingFunctions.cu
 	$(NVCC) -o analyzeMultiselect analyzeMultiselect.cu $(NVCCFLAGS)
 
-realDataTests: realDataTests.cu generateProblems.cu 
+realDataTests: realDataTests.cu generateProblems.cu bucketMultiselect.cu 
 	$(NVCC) -o realDataTests realDataTests.cu $(NVCCFLAGS)
 
 clean:
