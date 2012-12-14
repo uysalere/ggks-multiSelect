@@ -19,6 +19,7 @@
 #include <thrust/random.h>
 #include <thrust/sort.h>
 #include <thrust/transform_reduce.h>
+#include <limits>
 
 namespace BucketMultiselect{
   using namespace std;
@@ -183,22 +184,15 @@ namespace BucketMultiselect{
         bucketIndex = (minPivotIndex * sharedNumSmallBuckets) 
           + (int) (((double)num - (double)sharedPivots[minPivotIndex]) 
                    * sharedSlopes[minPivotIndex]);
-        
-        if (bucketIndex< numBuckets) {
-          d_elementToBucket[i] = bucketIndex;
-          atomicInc(sharedBuckets + bucketIndex, length);
-        }
-        else {
-          d_elementToBucket[i] = numBuckets-1;
-          atomicInc(sharedBuckets + numBuckets-1, length);
-        }
+
+        if (bucketIndex == numBuckets) 
+          bucketIndex= numBuckets-1;
+
+        d_elementToBucket[i] = bucketIndex;
+        atomicInc(sharedBuckets + bucketIndex, length); 
       }
     }
     
-    /*
-    if (threadIndex < 1) 
-      *(sharedBuckets + numBuckets -1) += *(sharedBuckets + numBuckets);
-      */
     syncthreads();        
 
     //reading bucket counts from shared memory back to global memory
@@ -672,9 +666,16 @@ namespace BucketMultiselect{
       if (isinf(slopes[i]))
         slopes[i] = 0;
 
+    /*
+    for (register int i = 0; i < numPivots; i++)
+      printf("piv %lf \n", pivots[i]);
+    for (register int i = 0; i < numPivots - 1; i++)
+      printf("%lf \n", slopes[i]);
+    */
+
     CUDA_CALL(cudaMemcpy(d_slopes, slopes, (numPivots - 1) * sizeof(double), 
                          cudaMemcpyHostToDevice));  
-    CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots * sizeof(T), 
+    CUDA_CALL(cudaMemcpy(d_pivots, pivots, numPivots* sizeof(T), 
                          cudaMemcpyHostToDevice));
 
     // timing(1, 4);
@@ -686,7 +687,7 @@ namespace BucketMultiselect{
 
     //Distribute elements into their respective buckets
     assignSmartBucket<T><<<numBlocks, threadsPerBlock, numPivots * sizeof(T) 
-      + (numPivots-1) * sizeof(double) + (numBuckets+1) * sizeof(uint)>>>
+      + (numPivots-1) * sizeof(double) + numBuckets * sizeof(uint)>>>
       (d_vector, length, numBuckets, d_slopes, d_pivots, numPivots, 
        d_elementToBucket, d_bucketCount, offset);
     // timing(1, 5);
