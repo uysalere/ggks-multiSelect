@@ -181,9 +181,9 @@ namespace RandomizedBucketSelect{
         bucketIndex =  (d_vector[i] - sMin) * slope;
 
         //if it goes beyond the number of buckets, put it in the last bucket
-        if(bucketIndex >= sbucketNums){
+        if(bucketIndex >= sbucketNums)
           bucketIndex = sbucketNums - 1;
-        }
+        
         bucket[i] = bucketIndex;
         atomicInc(&sharedBuckets[bucketIndex], length);
       }

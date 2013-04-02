@@ -138,27 +138,89 @@ results_t<T>* timeNaiveBucketMultiselect (T * h_vec, uint numElements, uint * kV
 
   for (int i = 0; i < kCount; i++)
     cudaMemcpy(result->vals + i, d_vec + (numElements - kVals[i]), sizeof (T), cudaMemcpyDeviceToHost);
-
-  /*
-  T * d_output;
-  uint * d_kList;
-
-  cudaMalloc (&d_output, kCount * sizeof (T));
-  cudaMalloc (&d_kList, kCount * sizeof(uint));
-  cudaMemcpy (d_kList, kVals, kCount * sizeof (uint), cudaMemcpyHostToDevice);
-
-  int threads = MAX_THREADS_PER_BLOCK;
-  if (kCount < threads)
-    threads = kCount;
-  int blocks = (int) ceil (kCount / (float) threads);
-
-  copyInChunk<T><<<blocks, threads>>>(d_output, d_vec, d_kList, kCount, numElements);
-  cudaMemcpy (result->vals, d_output, kCount * sizeof (T), cudaMemcpyDeviceToHost);
-
-  cudaFree(d_output);
-  cudaFree(d_kList); 
-  */
    
+  cudaEventRecord(stop, 0);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&time, start, stop);
+
+  wrapupForTiming(start, stop, time, result);
+  cudaFree(d_vec);
+  return result;
+}
+
+/***************************************
+********* TOP K SELECT
+****************************************/
+
+template<typename T>
+results_t<T>* timeSortAndChooseTopkselect(T * h_vec, uint numElements, uint kCount) {
+  T * d_vec;
+  results_t<T> * result;
+  float time;
+  cudaEvent_t start, stop;
+
+  setupForTiming(start, stop, h_vec, &d_vec, &result, numElements, kCount);
+
+  cudaEventRecord(start, 0);
+  thrust::device_ptr<T> dev_ptr(d_vec);
+  thrust::sort(dev_ptr, dev_ptr + numElements, thrust::greater<T>());
+
+  cudaMemcpy(result->vals, d_vec, kCount * sizeof(T), cudaMemcpyDeviceToHost);
+  
+  cudaEventRecord(stop, 0);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&time, start, stop);
+
+  wrapupForTiming(start, stop, time, result);
+  cudaFree(d_vec);
+  return result;
+}
+
+// FUNCTION TO TIME RANDOMIZED TOP K SELECT
+template<typename T>
+results_t<T>* timeRandomizedTopkselect (T * h_vec, uint numElements, uint kCount) {
+  T * d_vec;
+  results_t<T> * result;
+  float time;
+  cudaEvent_t start, stop;
+  cudaDeviceProp dp;
+  cudaGetDeviceProperties(&dp, 0);
+
+  setupForTiming(start, stop, h_vec, &d_vec, &result, numElements, kCount);
+ 
+  cudaEventRecord(start, 0);
+  result->vals = randomizedTopkSelectWrapper(d_vec, numElements, kCount);
+ 
+  cudaEventRecord(stop, 0);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&time, start, stop);
+
+  wrapupForTiming(start, stop, time, result);
+  cudaFree(d_vec);
+  return result;
+}
+
+// FUNCTION TO TIME BUCKET TOP K SELECT
+template<typename T>
+results_t<T>* timeBucketTopkselect (T * h_vec, uint numElements, uint kCount) {
+  // initialize ks
+  uint * kVals = (uint *) malloc(kCount*sizeof(T));
+  for (uint i = 0; i < kCount; i++)
+    kVals[i] = i+1;
+
+  T * d_vec;
+  results_t<T> * result;
+  float time;
+  cudaEvent_t start, stop;
+  cudaDeviceProp dp;
+  cudaGetDeviceProperties(&dp, 0);
+
+  setupForTiming(start, stop, h_vec, &d_vec, &result, numElements, kCount);
+ 
+  cudaEventRecord(start, 0);
+
+  BucketMultiselect::bucketMultiselectWrapper(d_vec, numElements, kVals, kCount, result->vals, dp.multiProcessorCount, dp.maxThreadsPerBlock);
+ 
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&time, start, stop);

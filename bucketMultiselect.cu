@@ -121,7 +121,7 @@ namespace BucketMultiselect{
 
   /* This function assigns elements to buckets based on the pivots and slopes determined 
      by a randomized sampling of the elements in the vector. At the same time, this 
-     function keeps track
+     function keeps track of count.
 
      d_elementToBucket : bucket assignment for every array element
      d_bucketCount : number of element that falls into the indexed buckets within the block

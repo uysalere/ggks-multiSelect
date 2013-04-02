@@ -126,17 +126,15 @@ void shiftBuckets(int &leftBucket, int &rightBucket, int numBuckets, int bucketC
 
 
 template<typename T>
-T randomizedSelect(T *list,int size,int k, double desiredProbability){
+T * randomizedTopkSelect(T *list,int size,int k, double desiredProbability){
 
-  printf("Here\n");
-
-  T kthLargestValue, pivot0,pivot1;
+  T pivot0,pivot1;
   T *splitters, *middleBucket, *pivotPtr0, *pivotPtr1, *shiftedSplitters;
   int *threadOffsetFirst, *threadOffsetMiddle;
   int sizeOfMiddleBucket, sizeOfFirstBucket, pivotIndex0, pivotIndex1, leftBucket, rightBucket;
 
+  int originalK = k ;
   k = size - k + 1;
-  int indexOfK = k-1 ;
 
   //these need to be adjusted depending upon the device being used. 
   int threadsPerBlock = 64;
@@ -159,7 +157,7 @@ T randomizedSelect(T *list,int size,int k, double desiredProbability){
   //PIVOT CHOICE
   generateSplitters(list, shiftedSplitters, numSplitters, size, sizeOfThreadOffset, numBlocks,threadsPerBlock);
   thrust::device_ptr<T>ptr_splitters(splitters);
-  thrust::sort(ptr_splitters, ptr_splitters + numSplitters +2);
+  thrust::sort(ptr_splitters, ptr_splitters + numSplitters + 2);
   choosePivots(size, k, numSplitters, desiredProbability, leftBucket,rightBucket);
 
   //CHECK IF PIVOTS PUT KTH INTO MIDDLE BUCKET
@@ -186,12 +184,18 @@ T randomizedSelect(T *list,int size,int k, double desiredProbability){
   partition<<<numBlocks, threadsPerBlock>>>(list, pivot0, pivot1, threadOffsetMiddle, middleBucket, size, elementsPerThread);
 
  
-  //Sort the middle bucket, then take the kth larges element
+  //Sort the middle bucket, then take the kth largest element
   thrust::device_ptr<T>d_middle(middleBucket);
-  thrust::sort(d_middle, d_middle + sizeOfMiddleBucket);
+  thrust::sort(d_middle, d_middle + sizeOfMiddleBucket, thrust::greater<T>());
 
+  T * topK = (T *) malloc(originalK * sizeof(T));
+  cudaMemcpy(topK, middleBucket, originalK * sizeof(T), cudaMemcpyDeviceToHost);
+  //cudaMemcpy(&kthLargestValue, middleBucket + indexOfK - sizeOfFirstBucket, sizeof(T), cudaMemcpyDeviceToHost);
 
-  cudaMemcpy(&kthLargestValue, middleBucket + indexOfK -sizeOfFirstBucket, sizeof(T), cudaMemcpyDeviceToHost);
+  /*
+  for (int i = 0; i < 10; i++)
+    printf("RES[%d]: %f\n", i, topK[i]);
+  */
 
   //free up allocated memory on device
   cudaFree(middleBucket);
@@ -200,10 +204,10 @@ T randomizedSelect(T *list,int size,int k, double desiredProbability){
   cudaFree(threadOffsetMiddle);
 
   //return the kthLargestValue
-  return kthLargestValue;
+  return topK;
 }
 
 template<typename T>
-T randomizedSelectSelectWrapper(T *list,int size,int k){
-  lanlSelect(list,size, k, .90);
+T * randomizedTopkSelectWrapper(T *list,int size,int k){
+  return randomizedTopkSelect(list,size, k, .90);
 }

@@ -55,7 +55,7 @@ results_t<T>* timeSortAndChoose(T *h_vec, uint numElements, uint k){
   thrust::device_ptr<T> dev_ptr(d_vec);
   cudaEventRecord(start, 0);
 
-  thrust::sort(dev_ptr, dev_ptr + numElements);
+  thrust::sort(dev_ptr, dev_ptr + numElements, thrust::greater<T>());
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&time, start,stop);
@@ -127,9 +127,9 @@ results_t<T>* timeInplaceRadixSelect(T *h_vec, uint numElements, uint k){
 // /////////////////////////////////////////////////////////////////
 // //          THE SLICING TIMING FUNCTION
 // /////////////////////////////////////////////////////////////////
-/*
+
 template<typename T>
-results_t<T>* timeCuttingPlane(T *h_vec, uint size, uint k){
+results_t<T>* timeCuttingPlane(T *h_vec, uint size, uint k) {
   float time;
   cudaEvent_t start,stop;
   cudaEventCreate(&start);
@@ -143,8 +143,12 @@ results_t<T>* timeCuttingPlane(T *h_vec, uint size, uint k){
 
   cudaEventRecord(start,0);
 
-  returnValueFromSelect = cp_select::median_min(DataD.begin(), DataD.end(),  7,  1, 1 + size - k);
-  
+  /* 
+     UNCOMMENT TO GET ALGORITHM WORKING
+     returnValueFromSelect = cp_select::median_min(DataD.begin(), DataD.end(),  7,  1, 1 + size - k);
+  */
+  returnValueFromSelect = NULL;
+
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&time,start,stop);
@@ -158,7 +162,7 @@ results_t<T>* timeCuttingPlane(T *h_vec, uint size, uint k){
   return result;
   
 }
-*/
+
 //FUNCTION TO TIME BUCKET SELECT
 template<typename T>
 results_t<T>* timeBucketSelect(T* hostVec, uint size, uint k){
