@@ -1,41 +1,88 @@
-#nvcc -o compareAlgorithms compareAlgorithms.cu  -I./lib/ -I. -arch=sm_20 -lcurand -lm -lgsl -lgslcblas
+SHELL = /bin/sh
 CUDA_INSTALL_PATH ?= /usr/local/cuda
 
 CPP := g++
 CC := gcc
-NVCC := nvcc
+LINK := g++ -fPIC
+NVCC := nvcc -ccbin /usr/bin
+.SUFFIXES: .c .cpp .cu .o
 
 # Includes
 INCLUDES = -I. -I$(CUDA_INSTALL_PATH)/include -I./lib/ 
-# ARCH
-ARCH = -arch=sm_20
 # Libraries
 LIB_CUDA := -L$(CUDA_INSTALL_PATH)/lib -lcurand -lm -lgsl -lgslcblas
+# ARCH
+ARCH = -arch=sm_20
+
 # Common flags
-COMMONFLAGS += $(INCLUDES)
+ COMMONFLAGS += $(INCLUDES)
 # Compilers
 NVCCFLAGS += $(COMMONFLAGS)
-NVCCFLAGS += $(ARCH) 
-NVCCFLAGS += $(LIB_CUDA) 
+NVCCFLAGS += $(ARCH)
+NVCCFLAGS += $(LIB_CUDA)
 CXXFLAGS += $(COMMONFLAGS)
 CFLAGS += $(COMMONFLAGS)
 
-default: compareAlgorithms compareMultiselect analyzeMultiselect realDataTests
+PROGRAMS = \
+compareAlgorithms \
+compareMultiselect \
+analyzeMultiselect \
+realDataTests \
+compareTopkselect
 
-compareAlgorithms: compareAlgorithms.cu bucketSelect.cu randomizedBucketSelect.cu
-	$(NVCC) -o compareAlgorithms compareAlgorithms.cu $(NVCCFLAGS)
+CompareAlgorithms = \
+compareAlgorithms.cu \
+bucketSelect.cu randomizedBucketSelect.cu noExtremaRandomizedBucketSelect.cu \
+generateProblems.cu timingFunctions.cu
 
-compareMultiselect: compareMultiselect.cu bucketMultiselect.cu naiveBucketMultiselect.cu generateProblems.cu noExtremaRandomizedBucketSelect.cu multiselectTimingFunctions.cu
-	$(NVCC) -o compareMultiselect compareMultiselect.cu $(NVCCFLAGS)
+CompareMultiselect = \
+compareMultiselect.cu \
+bucketMultiselect.cu naiveBucketMultiselect.cu \
+generateProblems.cu multiselectTimingFunctions.cu
 
-compareTopkselect: compareTopkselect.cu compareTopkselect.hpp multiselectTimingFunctions.cu randomizedTopkSelect.cu
-	$(NVCC) -o compareTopkselect compareTopkselect.cu $(NVCCFLAGS)
+CompareTopkselect = \
+compareTopkselect.cu \
+randomizedTopkSelect.cu \
+generateProblems.cu multiselectTimingFunctions.cu
 
-analyzeMultiselect: analyzeMultiselect.cu bucketMultiselect.cu multiselectTimingFunctions.cu
-	$(NVCC) -o analyzeMultiselect analyzeMultiselect.cu $(NVCCFLAGS)
+AnalyzeMultiselect = \
+analyzeMultiselect.cu \
+bucketMultiselect.cu \
+multiselectTimingFunctions.cu
 
-realDataTests: realDataTests.cu generateProblems.cu bucketMultiselect.cu 
-	$(NVCC) -o realDataTests realDataTests.cu $(NVCCFLAGS)
+RealDataTests = \
+realDataTests.cu \
+bucketMultiselect.cu \
+generateProblems.cu 
+
+all: $(PROGRAMS)
+
+compareAlgorithms: $(CompareAlgorithms)
+	$(NVCC) -o $@ $(addsuffix .cu,$@) $(NVCCFLAGS)
+
+compareMultiselect: $(CompareMultiselect)
+	$(NVCC) -o $@ $(addsuffix .cu,$@) $(NVCCFLAGS)
+
+compareTopkselect: $(CompareTopkselect)
+	$(NVCC) -o $@ $(addsuffix .cu,$@) $(NVCCFLAGS)
+
+analyzeMultiselect: $(AnalyzeMultiselect)
+	$(NVCC) -o $@ $(addsuffix .cu,$@) $(NVCCFLAGS)
+
+realDataTests: $(RealDataTests)
+	$(NVCC) -o $@ $(addsuffix .cu,$@) $(NVCCFLAGS)
+
+%.c.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+%.cu.o: %.cu
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+
+%.cpp.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f compareAlgorithms compareMultiselect compareTopkselect analyzeMultiselect realDataTests *~ x
+	rm -rf $(PROGRAMS) *~ *.o
+
+#compareAlgorithms: compareAlgorithms.cu bucketSelect.cu randomizedBucketSelect.cu
+#	$(NVCC) -o compareAlgorithms compareAlgorithms.cu $(NVCCFLAGS)
