@@ -55,7 +55,7 @@ results_t<T>* timeSortAndChoose(T *h_vec, uint numElements, uint k){
   thrust::device_ptr<T> dev_ptr(d_vec);
   cudaEventRecord(start, 0);
 
-  thrust::sort(dev_ptr, dev_ptr + numElements, thrust::greater<T>());
+  thrust::sort(dev_ptr, dev_ptr + numElements);
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   cudaEventElapsedTime(&time, start,stop);
